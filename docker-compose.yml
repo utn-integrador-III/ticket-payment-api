@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Servicio de la aplicación
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+      - MONGO_URI=mongodb://mongo:27017/
+      - MONGO_DB_NAME=ticket_payment_db
+      - JWT_SECRET_KEY=your_jwt_secret_key_here
+    depends_on:
+      - mongo
+    volumes:
+      - .:/app
+    command: python -m flask run --host=0.0.0.0
+
+  # Servicio de MongoDB
+  mongo:
+    image: mongo:5.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=ticket_payment_db
+
+  # MongoDB Express (Interfaz web opcional para MongoDB)
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+    depends_on:
+      - mongo
+
+volumes:
+  mongodb_data:
