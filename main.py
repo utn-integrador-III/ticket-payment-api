@@ -12,6 +12,7 @@ import logging
 import qrcode
 import base64
 import io
+from db.mongodb import db
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -85,13 +86,13 @@ class RegisterRequest(BaseModel):
 # Rutas de la API
 @app.post("/api/register")
 async def register_user(payload: RegisterRequest):
-    """Registra un nuevo usuario (demo en memoria)"""
+    """Registra un nuevo usuario (memoria y en MongoDB)"""
     email = payload.email.lower().strip()
     if email in USERS_DB:
         raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado")
 
     user_id = str(uuid4())
-    USERS_DB[email] = {
+    user_data = {
         "id": user_id,
         "name": payload.name.strip(),
         "email": email,
@@ -99,6 +100,10 @@ async def register_user(payload: RegisterRequest):
         "balance": 0.0,
         "payment_methods": [payload.payment_method.dict()] if payload.payment_method else []
     }
+    USERS_DB[email] = user_data
+
+    # Guardar en MongoDB
+    db["users"].insert_one(user_data)
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": email}, expires_delta=access_token_expires)
