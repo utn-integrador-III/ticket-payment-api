@@ -147,7 +147,25 @@ class LoginRequest(BaseModel):
 async def login_user(payload: LoginRequest):
     email = payload.email.lower().strip()
     user = USERS_DB.get(email)
-    if not user or not verify_password(payload.password, user["password"]):
+
+    # Si no está en memoria, buscar en MongoDB
+    if not user:
+        user_db = db["users"].find_one({"email": email})
+        if not user_db:
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        # MongoDB guarda _id como ObjectId, lo convertimos a str
+        user = {
+            "id": str(user_db.get("id", user_db.get("_id", ""))),
+            "name": user_db["name"],
+            "email": user_db["email"],
+            "password": user_db["password"],
+            "balance": user_db.get("balance", 0.0),
+            "payment_methods": user_db.get("payment_methods", [])
+        }
+        # Opcional: guardar en memoria para siguientes logins
+        USERS_DB[email] = user
+
+    if not verify_password(payload.password, user["password"]):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
