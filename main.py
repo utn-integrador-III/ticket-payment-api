@@ -12,6 +12,7 @@ import logging
 import qrcode
 import base64
 import io
+from db.mongodb import db
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -85,13 +86,13 @@ class RegisterRequest(BaseModel):
 # Rutas de la API
 @app.post("/api/register")
 async def register_user(payload: RegisterRequest):
-    """Registra un nuevo usuario (demo en memoria)"""
+    """Registra un nuevo usuario (memoria y en MongoDB)"""
     email = payload.email.lower().strip()
     if email in USERS_DB:
         raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado")
 
     user_id = str(uuid4())
-    USERS_DB[email] = {
+    user_data = {
         "id": user_id,
         "name": payload.name.strip(),
         "email": email,
@@ -99,6 +100,10 @@ async def register_user(payload: RegisterRequest):
         "balance": 0.0,
         "payment_methods": [payload.payment_method.dict()] if payload.payment_method else []
     }
+    USERS_DB[email] = user_data
+
+    # Guardar en MongoDB
+    db["users"].insert_one(user_data)
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": email}, expires_delta=access_token_expires)
@@ -142,7 +147,25 @@ class LoginRequest(BaseModel):
 async def login_user(payload: LoginRequest):
     email = payload.email.lower().strip()
     user = USERS_DB.get(email)
-    if not user or not verify_password(payload.password, user["password"]):
+
+    # Si no está en memoria, buscar en MongoDB
+    if not user:
+        user_db = db["users"].find_one({"email": email})
+        if not user_db:
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        # MongoDB guarda _id como ObjectId, lo convertimos a str
+        user = {
+            "id": str(user_db.get("id", user_db.get("_id", ""))),
+            "name": user_db["name"],
+            "email": user_db["email"],
+            "password": user_db["password"],
+            "balance": user_db.get("balance", 0.0),
+            "payment_methods": user_db.get("payment_methods", [])
+        }
+        # Opcional: guardar en memoria para siguientes logins
+        USERS_DB[email] = user
+
+    if not verify_password(payload.password, user["password"]):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
