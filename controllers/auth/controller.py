@@ -29,35 +29,19 @@ class AuthController(Resource):
             required_fields = ['name', 'email', 'password']
             for field in required_fields:
                 if not data.get(field):
-                    return ServerResponse.error(
-                        f"El campo {field} es requerido",
-                        status=400,
-                        message_code=VALIDATION_ERROR
-                    )
+                    return ServerResponse.validation_error(message=f"El campo {field} es requerido")
             
             # Validar formato de email
             if not self._is_valid_email(data['email']):
-                return ServerResponse.error(
-                    "Formato de correo electrónico inválido",
-                    status=400,
-                    message_code=INVALID_EMAIL
-                )
+                return ServerResponse.invalid_email()
             
             # Validar fortaleza de la contraseña
             if not self._is_strong_password(data['password']):
-                return ServerResponse.error(
-                    "La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas y números",
-                    status=400,
-                    message_code=WEAK_PASSWORD
-                )
+                return ServerResponse.weak_password()
             
             # Verificar si el usuario ya existe
             if UserModel.find_by_email(data['email']):
-                return ServerResponse.error(
-                    "El correo electrónico ya está registrado",
-                    status=400,
-                    message_code=USER_ALREADY_EXISTS
-                )
+                return ServerResponse.user_already_exists()
             
             # Crear hash de la contraseña
             hashed_password = self._hash_password(data['password'])
