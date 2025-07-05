@@ -18,40 +18,24 @@ class WalletController(Resource):
             
             # Validar datos de entrada
             if not data or 'amount' not in data or 'payment_method_id' not in data:
-                return ServerResponse.error(
-                    "Monto y método de pago son requeridos",
-                    status=400,
-                    message_code=VALIDATION_ERROR
-                )
+                return ServerResponse.validation_error(message="Monto y método de pago son requeridos")
             
             try:
                 amount = float(data['amount'])
                 if amount <= 0:
                     raise ValueError("El monto debe ser mayor a cero")
             except (ValueError, TypeError):
-                return ServerResponse.error(
-                    "Monto inválido",
-                    status=400,
-                    message_code=VALIDATION_ERROR
-                )
+                return ServerResponse.validation_error(message="Monto inválido")
             
             # Obtener usuario
             user = UserModel.find_by_id(current_user['_id'])
             if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+                return ServerResponse.user_not_found()
             
             # Verificar que el método de pago existe
             payment_method = next((m for m in user.payment_methods if m.get('id') == data['payment_method_id']), None)
             if not payment_method:
-                return ServerResponse.error(
-                    "Método de pago no encontrado",
-                    status=404,
-                    message_code=PAYMENT_METHOD_NOT_FOUND
-                )
+                return ServerResponse.payment_method_not_found()
             
             # Procesar la recarga
             transaction, error = TransactionModel.process_topup(
@@ -109,11 +93,7 @@ class WalletController(Resource):
         try:
             user = UserModel.find_by_id(current_user['_id'])
             if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+                return ServerResponse.user_not_found()
             
             return ServerResponse.success(
                 data={

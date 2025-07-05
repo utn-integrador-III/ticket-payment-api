@@ -58,3 +58,43 @@ class ServerResponse:
     @classmethod
     def server_error(cls, message="Error interno del servidor", **kwargs):
         return cls.error(message=message, status=500, **kwargs)
+
+    @classmethod
+    def user_not_found(cls, **kwargs):
+        return cls.error(message="Usuario no encontrado", status=404, message_code="USER_NOT_FOUND", **kwargs)
+
+    @classmethod
+    def payment_method_not_found(cls, **kwargs):
+        return cls.error(message="Método de pago no encontrado", status=404, message_code="PAYMENT_METHOD_NOT_FOUND", **kwargs)
+
+    @classmethod
+    def insufficient_balance(cls, required_amount=None, current_balance=None, **kwargs):
+        data = {}
+        if required_amount is not None:
+            data['required_amount'] = required_amount
+        if current_balance is not None:
+            data['current_balance'] = current_balance
+        return cls.error(
+            message="Saldo insuficiente",
+            status=402,
+            message_code="INSUFFICIENT_BALANCE",
+            data=data if data else None,
+            **kwargs
+        )
+
+    @classmethod
+    def validation_error(cls, message="Datos de entrada inválidos", **kwargs):
+        return cls.error(message=message, status=400, message_code="VALIDATION_ERROR", **kwargs)
+
+    @classmethod
+    def user_already_exists(cls, **kwargs):
+        return cls.error(message="El correo electrónico ya está registrado", status=400, message_code="USER_ALREADY_EXISTS", **kwargs)
+
+    @classmethod
+    def weak_password(cls, **kwargs):
+        return cls.error(message="La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas y números", status=400, message_code="WEAK_PASSWORD", **kwargs)
+
+    @classmethod
+    def invalid_email(cls, **kwargs):
+        return cls.error(message="Formato de correo electrónico inválido", status=400, message_code="INVALID_EMAIL", **kwargs)
+

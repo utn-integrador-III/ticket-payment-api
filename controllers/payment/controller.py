@@ -21,11 +21,7 @@ class PaymentController(Resource):
             
             # Validar datos de entrada
             if not data or 'qr_data' not in data:
-                return ServerResponse.error(
-                    "Se requiere el código QR del usuario",
-                    status=400,
-                    message_code=VALIDATION_ERROR
-                )
+                return ServerResponse.validation_error(message="Se requiere el código QR del usuario")
             
             # Aquí iría la lógica para validar el código QR
             # Por ahora, asumimos que el qr_data es el ID del usuario
@@ -34,26 +30,14 @@ class PaymentController(Resource):
             # Validar que el usuario exista
             user = UserModel.find_by_id(user_id)
             if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+                return ServerResponse.user_not_found()
             
             # Monto fijo por pasaje (podría venir en el QR o configurarse)
             ticket_price = 2.50  # Ejemplo: $2.50 por pasaje
             
             # Verificar saldo suficiente
             if user.balance < ticket_price:
-                return ServerResponse.error(
-                    "Saldo insuficiente",
-                    status=402,  # Payment Required
-                    message_code=INSUFFICIENT_BALANCE,
-                    data={
-                        'required_amount': ticket_price,
-                        'current_balance': user.balance
-                    }
-                )
+                return ServerResponse.insufficient_balance(required_amount=ticket_price, current_balance=user.balance)
             
             # Procesar el pago
             transaction, error = TransactionModel.process_payment(
@@ -111,11 +95,7 @@ class PaymentMethodController(Resource):
         try:
             user = UserModel.find_by_id(current_user['_id'])
             if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+                return ServerResponse.user_not_found()
             
             # Ocultar información sensible de los métodos de pago
             payment_methods = []
@@ -152,7 +132,7 @@ class PaymentMethodController(Resource):
             data = request.get_json()
             
             # Validar datos de la tarjeta
-            required_fields = ['card_number', 'expiry', 'cvv']
+            required_fields = ['card_holder', 'card_number', 'expiry', 'cvv']
             for field in required_fields:
                 if field not in data:
                     return ServerResponse.error(
@@ -172,11 +152,7 @@ class PaymentMethodController(Resource):
             # Obtener usuario
             user = UserModel.find_by_id(current_user['_id'])
             if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+                return ServerResponse.user_not_found()
             
             # Agregar método de pago
             try:
@@ -222,11 +198,7 @@ class PaymentMethodController(Resource):
             # Obtener usuario
             user = UserModel.find_by_id(current_user['_id'])
             if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+                return ServerResponse.user_not_found()
             
             # Eliminar método de pago
             try:
