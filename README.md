@@ -14,7 +14,7 @@ API para el sistema de pagos con tarjeta sin contacto mediante códigos QR.
 
 ## Requisitos
 
-- Python 3.10+ (probado con Python 3.12)
+- Python 3.10+ (probado con Python 3.13.5)
 - MongoDB 5.0+
 - pip (gestor de paquetes de Python)
 - Docker y Docker Compose (opcional)
