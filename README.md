@@ -1,174 +1,128 @@
-# Ticket Payment API
+# 🎫 Ticket Payment API - FastAPI
 
-API para el sistema de pagos con tarjeta sin contacto mediante códigos QR.
+API moderna para sistema de pagos con tarjeta sin contacto mediante códigos QR, desarrollada con **FastAPI** y arquitectura de controladores modular.
 
-## Características
+## ✨ Características
 
-- Registro de usuarios con métodos de pago
-- Autenticación con JWT
-- Generación de códigos QR para pagos
-- Escaneo de códigos QR para procesar pagos
-- Recarga de saldo
-- Gestión de métodos de pago
-- Historial de transacciones
+- 🔐 **Autenticación JWT** con FastAPI Security
+- 👤 **Registro y gestión de usuarios**
+- 💳 **Gestión de métodos de pago**
+- 📱 **Generación de códigos QR** para pagos
+- 🔍 **Escaneo de códigos QR** para procesar pagos
+- 💰 **Sistema de wallet** con recarga de saldo
+- 📊 **Historial de transacciones** con estados detallados
+- 🏗️ **Arquitectura modular** con controladores FastAPI
+- 📚 **Documentación automática** con Swagger UI
 
-## Requisitos
+## 🛠️ Tecnologías
+
+- **FastAPI** - Framework web moderno y rápido
+- **MongoDB** - Base de datos NoSQL
+- **JWT** - Autenticación con tokens
+- **Pydantic** - Validación de datos
+- **Uvicorn** - Servidor ASGI
+- **Python 3.10+**
+
+## 📋 Requisitos
 
 - Python 3.10+ (probado con Python 3.13.5)
 - MongoDB 5.0+
 - pip (gestor de paquetes de Python)
 - Docker y Docker Compose (opcional)
 
-## Instalación
+## 🚀 Instalación y Ejecución
 
-1. Clonar el repositorio:
-   git clone https://github.com/tu-usuario/ticket-payment-api.git
-   cd ticket-payment-api
+### 1. Clonar el repositorio
+```bash
+git clone https://github.com/tu-usuario/ticket-payment-api.git
+cd ticket-payment-api
+```
 
-2. Crear un entorno virtual (recomendado):
-   python -m venv venv
-   source venv/bin/activate  # En Windows: venv\Scripts\activate
+### 2. Crear entorno virtual
+```bash
+python -m venv venv
 
-3. Instalar dependencias:
-   pip install -r requirements.txt
+# Windows
+venv\Scripts\activate
 
-4. Configurar variables de entorno:
-   cp .env.example .env
-   Editar el archivo `.env` con tus configuraciones.
+# Linux/Mac
+source venv/bin/activate
+```
 
-## Ejecución
+### 3. Instalar dependencias
+```bash
+pip install -r requirements.txt
+```
 
-### Ejecución local (sin Docker)
-1. Crea un entorno virtual y actívalo (opcional):
+### 4. Configurar variables de entorno
+```bash
+# Crear archivo .env
+SECRET_KEY=tu-clave-secreta-aqui
+MONGO_URI=mongodb://localhost:27017/
+MONGO_DB_NAME=ticket_payment_db
+ALGORITHM=HS256
+```
 
-   python -m venv venv
-   source venv/bin/activate  # Windows: venv\\Scripts\\activate
-   .\venv\Scripts\activate.bat
-   .\venv\Scripts\activate.ps1
+### 5. Ejecutar el servidor
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
-2. Instala las dependencias:
+### 6. Acceder a la documentación
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **OpenAPI JSON**: http://localhost:8000/openapi.json
 
-   pip install -r requirements.txt
+## 📡 API Endpoints
 
-3. Copia y ajusta las variables de entorno:
+### 🔐 Autenticación
 
-   cp .env.example .env
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| `POST` | `/api/register` | Registrar nuevo usuario | ✅ |
+| `POST` | `/api/login` | Iniciar sesión | ✅ |
+| `POST` | `/token` | OAuth2 token (compatibilidad) | ✅ |
 
-4. Inicia el servidor con recarga automática:
+### 👤 Usuario
 
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   La API quedará disponible en `http://localhost:8000` y la documentación en `http://localhost:8000/docs`.
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| `GET` | `/api/user/profile` | Obtener perfil del usuario | ✅ |
+| `GET` | `/api/user/qr` | Generar código QR personal | ✅ |
 
-## SI al momento de ejecutar el backend se presentan erorres usar la version de pythone 3.12
-   py -3.12 -m venv venv
-   .\venv\Scripts\activate
-   pip install -r requirements.txt
+### 💳 Métodos de Pago
 
-Activate.ps1: Activa el entorno virtual de Python.
-pip install -r requirements.txt: Instala las dependencias listadas en requirements.txt.
-uvicorn main:app --reload --host 0.0.0.0 --port 8000: Inicia el servidor FastAPI en modo recarga.
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| `GET` | `/api/payment-methods` | Listar métodos de pago | ✅ |
+| `POST` | `/api/payment-methods` | Agregar método de pago | ✅ |
+| `DELETE` | `/api/payment-methods/{id}` | Eliminar método de pago | ✅ |
 
-### Ejecución con Docker (opcional)
+### 💰 Wallet
 
-1. Construye la imagen:
-   docker build -t ticket-payment-api .
-2. Ejecuta el contenedor:
-   docker run -p 5000:5000 ticket-payment-api
-   La API quedará disponible en `http://localhost:5000` y la documentación en `http://localhost:5000/docs`.
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| `GET` | `/api/wallet/balance` | Obtener balance actual | ✅ |
+| `POST` | `/api/wallet/topup` | Recargar saldo | ✅ |
+| `GET` | `/api/wallet/transactions` | Historial de transacciones | ✅ |
 
-## Estructura del Proyecto
+### 💸 Pagos
 
-ticket-payment-api/
-├── main.py                 # Punto de entrada de la aplicación FastAPI
-├── service.py             # Configuración de rutas de la API
-├── requirements.txt        # Dependencias de Python
-├── .env.example           # Plantilla de variables de entorno
-├── Dockerfile             # Configuración de Docker
-├── docker-compose.yml     # Configuración de servicios con Docker
-├── README.md             # Este archivo
-│
-├── controllers/          # Controladores de la API
-│   ├── auth/             # Autenticación
-│   ├── payment/          # Pagos y métodos de pago
-│   ├── user/             # Perfil de usuario
-│   └── wallet/           # Gestión de billetera
-│
-├── models/              # Modelos de datos
-│   ├── user/             # Modelo de usuario
-│   └── transaction/      # Modelo de transacciones
-│
-├── db/                  # Configuración de base de datos
-│   └── mongodb.py        # Conexión a MongoDB
-│
-├── middleware/          # Middlewares
-│   └── auth.py           # Autenticación JWT
-│
-└── utils/               # Utilidades
-    ├── server_response.py # Respuestas estandarizadas
-    └── message_codes.py  # Códigos de mensajes
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| `POST` | `/api/payment/scan` | Procesar pago por QR | ✅ |
 
-## Documentación de la API
+## 📝 Ejemplos de JSON
 
-La documentación interactiva de la API está disponible en:
-- Swagger UI (local): `http://localhost:8000/docs`
-- Swagger UI (Docker): `http://localhost:5000/docs`
-- Esquema OpenAPI: `http://localhost:8000/openapi.json`
-
-### Endpoints Principales
-
-#### Autenticación
-
-- `POST /api/register` - Registrar nuevo usuario
-- `POST /api/login` - Iniciar sesión
-- `PUT /api/change-password` - Cambiar contraseña del usuario
-- `POST /token` - Login OAuth2 (form data)
-- `GET /` - Verificar estado del servidor
-
-#### Usuario
-
-- `GET /api/user/qr` - Generar código QR del usuario
-- `GET /api/user/profile` - Obtener perfil del usuario
-
-#### Pagos
-
-- `POST /api/payment/scan` - Escanear código QR para pagar
-- `GET /api/payment/methods` - Obtener métodos de pago
-- `POST /api/payment/methods` - Agregar método de pago
-- `DELETE /api/payment/methods/{id}` - Eliminar método de pago
-
-#### Billetera
-
-- `GET /api/wallet` - Obtener saldo
-- `POST /api/wallet/topup` - Recargar saldo
-- `GET /api/wallet/transactions` - Historial de transacciones
-
-## Variables de Entorno
-
-| Variable | Descripción | Valor por defecto |
-|----------|-------------|------------------|
-| `FASTAPI_APP` | Ruta ASGI de la aplicación | `main:app` |
-| `ENVIRONMENT` | Entorno de ejecución | `development` |
-| `SECRET_KEY` | Clave secreta para la aplicación | `dev-secret-key` |
-| `MONGO_URI` | URI de conexión a MongoDB | `mongodb://localhost:27017/` |
-| `MONGO_DB_NAME` | Nombre de la base de datos | `ticket_payment_db` |
-| `JWT_SECRET_KEY` | Clave secreta para JWT | `jwt-secret-key` |
-| `JWT_ACCESS_TOKEN_EXPIRES` | Tiempo de expiración del token de acceso (segundos) | `3600` (1 hora) |
-| `JWT_REFRESH_TOKEN_EXPIRES` | Tiempo de expiración del token de actualización (segundos) | `2592000` (30 días) |
-
-## Ejemplos de Uso
-
-### Registrar un nuevo usuario
-
-```http
+### Registro de Usuario
+```json
 POST /api/register
-Content-Type: application/json
-
 {
-  "name": "Juan Pérez",
-  "email": "juan@example.com",
+  "name": "example",
+  "email": "example@example.com",
   "password": "MiClaveSegura123",
   "payment_method": {
-    "card_holder": "Juan Pérez",
+    "card_holder": "example",
     "card_number": "4111111111111111",
     "expiry": "12/25",
     "cvv": "123"
@@ -176,98 +130,185 @@ Content-Type: application/json
 }
 ```
 
-### Iniciar sesión (JSON)
-
-```http
-POST /api/login
-Content-Type: application/json
-
+**Respuesta:**
+```json
 {
-  "email": "juan@example.com",
+  "message": "Usuario registrado exitosamente",
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "token_type": "bearer",
+  "user": {
+    "id": "64f1a2b3c4d5e6f7g8h9i0j1",
+    "name": "example",
+    "email": "example@example.com",
+    "balance": 0.0
+  }
+}
+```
+
+### Login de Usuario
+```json
+POST /api/login
+{
+  "email": "example@example.com",
   "password": "MiClaveSegura123"
 }
 ```
 
-### Login OAuth2 (Form Data)
-
-```http
-POST /token
-Content-Type: application/x-www-form-urlencoded
-
-username=juan@example.com&password=MiClaveSegura123
-```
-
-### Agregar método de pago
-
-```http
-POST /api/payment/methods
+### Agregar Método de Pago
+```json
+POST /api/payment-methods
 Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "card_holder": "María García",
+  "card_holder": "example",
   "card_number": "5555555555554444",
   "expiry": "06/26",
   "cvv": "456"
 }
 ```
 
-### Recargar saldo
-
-```http
+### Recargar Wallet
+```json
 POST /api/wallet/topup
 Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "amount": 100.00,
+  "amount": 100.0,
   "payment_method_id": "pm_123456789"
 }
 ```
 
-### Realizar pago por QR
-
-```http
+### Procesar Pago
+```json
 POST /api/payment/scan
 Authorization: Bearer <token>
-Content-Type: application/json
-
 {
-  "qr_data": "user_id_or_merchant_code",
+  "qr_data": "user_id:64f1a2b3c4d5e6f7g8h9i0j1",
   "amount": 25.50
 }
 ```
 
-## Pruebas
+## 🔒 Autenticación
 
-Para ejecutar las pruebas:
+La API utiliza **JWT (JSON Web Tokens)** para la autenticación. Después del login o registro, incluye el token en el header:
 
+```
+Authorization: Bearer <tu_token_aqui>
+```
+
+### Ejemplo con cURL:
+```bash
+curl -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
+     http://localhost:8000/api/user/profile
+```
+
+### Ejemplo con PowerShell:
+```powershell
+$headers = @{ "Authorization" = "Bearer tu_token_aqui" }
+Invoke-RestMethod -Uri "http://localhost:8000/api/user/profile" -Headers $headers
+```
+
+## 🧪 Pruebas
+
+### Ejecutar suite de pruebas completa:
+```bash
 python pruebas/test_api.py
+```
 
-## Despliegue
+### Pruebas individuales con cURL:
+```bash
+# Registrar usuario
+curl -X POST "http://localhost:8000/api/register" \
+     -H "Content-Type: application/json" \
+     -d '{"name":"Test User","email":"test@example.com","password":"TestPassword123"}'
 
-### Producción
+# Obtener perfil (requiere token)
+curl -H "Authorization: Bearer <token>" \
+     "http://localhost:8000/api/user/profile"
+```
 
-1. Configurar un servidor web como Nginx o Apache como proxy inverso
-2. Usar Gunicorn como servidor WSGI:
-      gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 main:app
-3. Configurar un servicio systemd para la aplicación
-4. Configurar SSL con Let's Encrypt
+### Pruebas con PowerShell:
+```powershell
+# Registrar usuario
+$body = @{
+    name = "Test User"
+    email = "test@example.com"
+    password = "TestPassword123"
+} | ConvertTo-Json
 
-### Variables de entorno en producción
+Invoke-RestMethod -Uri "http://localhost:8000/api/register" -Method POST -Body $body -ContentType "application/json"
+```
 
-Asegúrate de configurar las siguientes variables en producción:
+## 🏗️ Arquitectura
 
-FLASK_ENV=production
-SECRET_KEY=una_clave_muy_larga_y_segura
-JWT_SECRET_KEY=otra_clave_muy_larga_y_segura
-MONGO_URI=mongodb://usuario:contraseña@servidor:27017/
+### Estructura del Proyecto
+```
+ticket-payment-api/
+├── controllers/          # Controladores FastAPI
+│   ├── auth/            # Autenticación
+│   ├── user/            # Usuario
+│   ├── payment/         # Pagos
+│   └── wallet/          # Wallet
+├── models/              # Modelos de datos
+│   ├── user/            # Modelo de usuario
+│   ├── transaction/     # Modelo de transacciones
+│   └── auth/            # Esquemas de autenticación
+├── services/            # Lógica de negocio
+├── middleware/          # Middleware de autenticación
+├── db/                  # Configuración de base de datos
+├── pruebas/             # Scripts de prueba
+├── main.py              # Punto de entrada FastAPI
+└── requirements.txt     # Dependencias
+```
 
-## git-Command
+### Controladores Modulares
+- **AuthController**: Registro, login, OAuth2
+- **UserController**: Perfil, generación QR
+- **PaymentController**: Procesamiento de pagos
+- **PaymentMethodController**: Gestión de métodos de pago
+- **WalletController**: Balance, recarga, historial
 
-1. Hacer fork del repositorio
-2. Crear una rama para tu función (`git checkout -b feature/nueva-funcion`)
-3. Preparar todos los archivos para commit (agrega todos los cambios nuevos y existentes) (`git add .`)
-3. Hacer commit de tus cambios (`git commit -am 'Añadir nueva función'`)
-4. Hacer push a la rama (`git push origin feature/nueva-funcion`)
-5. Crear un Pull Request
+## 📊 Estados de Transacciones
+
+| Estado | Descripción |
+|--------|-------------|
+| `pending` | Transacción iniciada, pendiente de procesamiento |
+| `completed` | Transacción completada exitosamente |
+| `failed` | Transacción falló (ej: saldo insuficiente) |
+| `refunded` | Transacción reembolsada |
+
+## 🔧 Variables de Entorno
+
+| Variable | Descripción | Valor por defecto |
+|----------|-------------|-------------------|
+| `SECRET_KEY` | Clave secreta para JWT | `dev-secret-key` |
+| `MONGO_URI` | URI de conexión a MongoDB | `mongodb://localhost:27017/` |
+| `MONGO_DB_NAME` | Nombre de la base de datos | `ticket_payment_db` |
+| `ALGORITHM` | Algoritmo para JWT | `HS256` |
+
+### MongoDB no conecta
+```bash
+# Verificar que MongoDB esté ejecutándose
+mongosh
+# o
+mongo
+```
+
+### Puerto 8000 ocupado
+```bash
+# Usar otro puerto
+uvicorn main:app --reload --port 8001
+```
+
+## 📚 Documentación Adicional
+
+- **Swagger UI**: http://localhost:8000/docs - Interfaz interactiva
+- **ReDoc**: http://localhost:8000/redoc - Documentación alternativa
+- **OpenAPI Schema**: http://localhost:8000/openapi.json - Esquema JSON
+
+## 🤝 Contribución
+
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+

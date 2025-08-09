@@ -1,20 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from datetime import timedelta
-from typing import Optional
-from uuid import uuid4
 from decouple import config
 import logging
-import qrcode
-import base64
-import io
 from models.user.model import UserModel
 from models.auth.schemas import (
-    LoginRequest, RegisterRequest, Token, TokenData, UserProfile,
-    PaymentMethod, PaymentMethodIn, TopupRequest, ScanRequest
+    LoginRequest, RegisterRequest, Token, UserProfile,
+    PaymentMethodIn, TopupRequest, ScanRequest, ChangePasswordRequest
 )
 from services.auth_service import AuthService
+from controllers.auth.controller import AuthController
+from controllers.user.controller import UserController
+from controllers.payment.controller import PaymentController, PaymentMethodController
+from controllers.wallet.controller import WalletController
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -49,22 +48,8 @@ auth_service = AuthService(SECRET_KEY, ALGORITHM)
 
 # Rutas de la API
 @app.post("/api/register")
-async def register_user(payload: RegisterRequest):
-    """Registra un nuevo usuario usando UserModel"""
-    user = auth_service.register_user(payload)
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth_service.create_access_token(
-        data={"sub": user.email}, 
-        expires_delta=access_token_expires
-    )
-
-    return {
-        "message": "Usuario registrado exitosamente",
-        "user_id": str(user._id),
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+async def register(user: RegisterRequest):
+    return AuthController.register(user)
 
 @app.get("/")
 async def read_root():
@@ -72,15 +57,7 @@ async def read_root():
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    login_data = LoginRequest(email=form_data.username, password=form_data.password)
-    user = auth_service.authenticate_user(login_data)
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth_service.create_access_token(
-        data={"sub": user.email}, 
-        expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return AuthController.oauth2_login(form_data)
 
 # Incluir routers de otros módulos
 # from routers import users, payments, wallet
@@ -92,21 +69,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 # Endpoint de Login
 # ---------------------------
 @app.post("/api/login")
-async def login_user(payload: LoginRequest):
-    user = auth_service.authenticate_user(payload)
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth_service.create_access_token(
-        data={"sub": user.email}, 
-        expires_delta=access_token_expires
-    )
-
-    return {
-        "message": "Inicio de sesión exitoso",
-        "user_id": str(user._id),
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+async def login(user: LoginRequest):
+    return AuthController.login(user)
 
 # ---------------------------
 # Dependencia para obtener usuario actual desde JWT
@@ -120,83 +84,56 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel:
 # ---------------------------
 @app.get("/api/user/profile", response_model=UserProfile)
 async def get_profile(current_user: UserModel = Depends(get_current_user)):
-    user_dict = current_user.to_dict()
-    return {
-        "id": user_dict["id"],
-        "name": user_dict["name"],
-        "email": user_dict["email"],
-        "balance": user_dict["balance"],
-        "payment_methods": user_dict["payment_methods"]
-    }
+    return UserController.get_profile(current_user)
 
 @app.get("/api/user/qr")
 async def get_user_qr(current_user: UserModel = Depends(get_current_user)):
-    img = qrcode.make(str(current_user._id))
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    qr_b64 = base64.b64encode(buffer.getvalue()).decode()
-    return {"qr_base64": qr_b64}
+    return UserController.generate_qr(current_user)
+
+@app.put("/api/user/change-password")
+async def change_password(password_data: ChangePasswordRequest, current_user: UserModel = Depends(get_current_user)):
+    return UserController.change_password(password_data, current_user)
 
 # ---------------------------
 # Endpoints de métodos de pago
 # ---------------------------
 @app.get("/api/payment/methods")
 async def list_payment_methods(current_user: UserModel = Depends(get_current_user)):
-    return current_user.payment_methods
+    return PaymentMethodController.get_payment_methods(current_user)
 
 @app.post("/api/payment/methods")
 async def add_payment_method(method: PaymentMethodIn, current_user: UserModel = Depends(get_current_user)):
-    from datetime import datetime
-    
-    method_dict = method.dict()
-    method_dict["id"] = str(uuid4())
-    method_dict["created_at"] = datetime.utcnow()
-    method_dict["updated_at"] = datetime.utcnow()
-    
-    # Limpiar métodos vacíos existentes antes de agregar uno nuevo
-    current_user.clean_empty_payment_methods()
-    
-    if current_user.add_payment_method(method_dict):
-        return {"message": "Método de pago agregado exitosamente", "payment_method": method_dict}
-    else:
-        raise HTTPException(status_code=500, detail="Error al agregar método de pago")
+    return PaymentMethodController.add_payment_method(method, current_user)
 
 @app.delete("/api/payment/methods/{method_id}")
 async def delete_payment_method(method_id: str, current_user: UserModel = Depends(get_current_user)):
-    if current_user.remove_payment_method(method_id):
-        return {"message": "Método de pago eliminado"}
-    raise HTTPException(status_code=404, detail="Método de pago no encontrado")
+    return PaymentMethodController.delete_payment_method(method_id, current_user)
 
 # ---------------------------
 # Endpoints de billetera
 # ---------------------------
 @app.get("/api/wallet")
 async def get_wallet_balance(current_user: UserModel = Depends(get_current_user)):
-    return {"balance": current_user.balance}
+    return WalletController.get_balance(current_user)
+
+@app.get("/api/wallet/transactions")
+async def get_transaction_history(
+    current_user: UserModel = Depends(get_current_user),
+    limit: int = 10,
+    offset: int = 0
+):
+    return WalletController.get_transaction_history(current_user, limit, offset)
 
 @app.post("/api/wallet/topup")
 async def wallet_topup(topup: TopupRequest, current_user: UserModel = Depends(get_current_user)):
-    new_balance = current_user.balance + topup.amount
-    
-    if current_user.update_balance(new_balance):
-        return {"message": "Saldo recargado", "balance": current_user.balance}
-    else:
-        raise HTTPException(status_code=500, detail="Error al actualizar el saldo")
+    return WalletController.topup_wallet(topup, current_user)
 
 # ---------------------------
 # Endpoint de pago por QR
 # ---------------------------
 @app.post("/api/payment/scan")
 async def payment_scan(scan: ScanRequest, current_user: UserModel = Depends(get_current_user)):
-    if current_user.balance < scan.amount:
-        raise HTTPException(status_code=400, detail="Saldo insuficiente")
-    
-    new_balance = current_user.balance - scan.amount
-    
-    if current_user.update_balance(new_balance):
-        return {"message": "Pago realizado", "balance": current_user.balance}
-    else:
-        raise HTTPException(status_code=500, detail="Error al procesar el pago")
+    return PaymentController.scan_payment(scan, current_user)
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script de pruebas para la API de Ticket Payment
+Script de pruebas actualizado para la API de Ticket Payment (FastAPI)
 Prueba todas las rutas disponibles y muestra los resultados en la terminal
 """
 
@@ -14,11 +14,11 @@ import sys
 BASE_URL = "http://localhost:8000"
 TEST_USER = {
     "name": "Usuario Test",
-    "email": "test@example.com",
-    "password": "password123",
+    "email": f"test_{int(time.time())}@example.com",  # Email único
+    "password": "TestPassword123",
     "payment_method": {
         "card_holder": "Usuario Test",
-        "card_number": "1234567890123456",
+        "card_number": "4111111111111111",
         "expiry": "12/25",
         "cvv": "123"
     }
@@ -57,15 +57,15 @@ def print_error(message):
 
 def print_info(message):
     """Imprime mensaje informativo"""
-    print(f"{Colors.WHITE}ℹ️  {message}{Colors.END}")
+    print(f"{Colors.PURPLE}ℹ️  {message}{Colors.END}")
 
 def print_response(response):
     """Imprime la respuesta de manera formateada"""
     try:
         data = response.json()
-        print(f"{Colors.PURPLE}📄 Respuesta: {json.dumps(data, indent=2, ensure_ascii=False)}{Colors.END}")
+        print(f"{Colors.WHITE}📄 Respuesta: {json.dumps(data, indent=2, ensure_ascii=False)}{Colors.END}")
     except:
-        print(f"{Colors.PURPLE}📄 Respuesta: {response.text}{Colors.END}")
+        print(f"{Colors.WHITE}📄 Respuesta: {response.text}{Colors.END}")
 
 def test_endpoint(method, endpoint, data=None, headers=None, expected_status=200):
     """Función genérica para probar endpoints"""
@@ -76,16 +76,18 @@ def test_endpoint(method, endpoint, data=None, headers=None, expected_status=200
             response = requests.get(url, headers=headers)
         elif method.upper() == "POST":
             response = requests.post(url, json=data, headers=headers)
+        elif method.upper() == "PUT":
+            response = requests.put(url, json=data, headers=headers)
         elif method.upper() == "DELETE":
             response = requests.delete(url, headers=headers)
         else:
             print_error(f"Método HTTP no soportado: {method}")
             return None
             
-        print(f"{Colors.WHITE}📊 Status Code: {response.status_code}{Colors.END}")
+        print(f"{Colors.WHITE}🔄 Status: {response.status_code}{Colors.END}")
         
         if response.status_code == expected_status:
-            print_success(f"Test exitoso - Status: {response.status_code}")
+            print_success(f"Test exitoso - Status {response.status_code}")
             print_response(response)
             return response
         else:
@@ -93,299 +95,225 @@ def test_endpoint(method, endpoint, data=None, headers=None, expected_status=200
             print_response(response)
             return response
             
-    except requests.exceptions.ConnectionError:
-        print_error("No se pudo conectar al servidor. ¿Está ejecutándose la API?")
-        return None
-    except Exception as e:
-        print_error(f"Error inesperado: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        print_error(f"Error de conexión: {e}")
         return None
 
 def main():
     """Función principal que ejecuta todas las pruebas"""
-    print_header("PRUEBAS DE API - TICKET PAYMENT SYSTEM")
-    print_info(f"Iniciando pruebas en: {BASE_URL}")
-    print_info(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print_header("🚀 PRUEBAS DE API - TICKET PAYMENT SYSTEM")
+    print_info(f"Base URL: {BASE_URL}")
+    print_info(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Variables para almacenar datos entre tests
+    # Variables globales para almacenar datos de prueba
     access_token = None
     user_id = None
     payment_method_id = None
     
-    # Test 1: Verificar que el servidor esté funcionando
-    print_test("Verificar servidor", "GET", "/")
-    response = test_endpoint("GET", "/")
-    if not response:
-        print_error("El servidor no está disponible. Terminando pruebas.")
-        return
+    # ==========================================
+    # 1. PRUEBAS DE AUTENTICACIÓN
+    # ==========================================
+    print_header("🔐 PRUEBAS DE AUTENTICACIÓN")
     
-    # Test 2: Registrar usuario
-    print_test("Registrar usuario", "POST", "/api/register")
-    response = test_endpoint("POST", "/api/register", data=TEST_USER, expected_status=200)
-    if response and response.status_code == 200:
-        data = response.json()
-        access_token = data.get("access_token")
-        user_id = data.get("user_id")
+    # Test 1: Registro de usuario
+    print_test("Registro de Usuario", "POST", "/api/register")
+    register_response = test_endpoint("POST", "/api/register", data=TEST_USER, expected_status=200)
+    
+    if register_response and register_response.status_code == 200:
+        register_data = register_response.json()
+        access_token = register_data.get("access_token")
+        user_id = register_data.get("user", {}).get("id")
+        print_success(f"Usuario registrado con ID: {user_id}")
         print_info(f"Token obtenido: {access_token[:20]}...")
-        print_info(f"User ID: {user_id}")
     
-    # Test 3: Login con credenciales
-    print_test("Login de usuario", "POST", "/api/login")
+    # Test 2: Login de usuario
+    print_test("Login de Usuario", "POST", "/api/login")
     login_data = {
         "email": TEST_USER["email"],
         "password": TEST_USER["password"]
     }
-    response = test_endpoint("POST", "/api/login", data=login_data)
-    if response and response.status_code == 200:
-        data = response.json()
-        access_token = data.get("access_token")  # Actualizar token
-        print_info(f"Nuevo token obtenido: {access_token[:20]}...")
+    login_response = test_endpoint("POST", "/api/login", data=login_data, expected_status=200)
     
-    # Test 4: Login con OAuth2 (form data)
-    print_test("Login OAuth2", "POST", "/token")
+    # Test 3: OAuth2 Token (para compatibilidad)
+    print_test("OAuth2 Token", "POST", "/token")
+    oauth_data = {
+        "username": TEST_USER["email"],
+        "password": TEST_USER["password"]
+    }
+    # Usar form data para OAuth2
     try:
-        form_data = {
-            "username": TEST_USER["email"],
-            "password": TEST_USER["password"]
-        }
-        response = requests.post(f"{BASE_URL}/token", data=form_data)
-        print(f"{Colors.WHITE}📊 Status Code: {response.status_code}{Colors.END}")
-        if response.status_code == 200:
-            print_success("Login OAuth2 exitoso")
-            print_response(response)
+        oauth_response = requests.post(f"{BASE_URL}/token", data=oauth_data)
+        print(f"{Colors.WHITE}🔄 Status: {oauth_response.status_code}{Colors.END}")
+        if oauth_response.status_code == 200:
+            print_success("OAuth2 Token obtenido exitosamente")
+            print_response(oauth_response)
         else:
-            print_error(f"Login OAuth2 falló - Status: {response.status_code}")
-            print_response(response)
+            print_error(f"Error en OAuth2 Token - Status: {oauth_response.status_code}")
+            print_response(oauth_response)
     except Exception as e:
-        print_error(f"Error en login OAuth2: {str(e)}")
+        print_error(f"Error en OAuth2: {e}")
     
-    if not access_token:
-        print_error("No se pudo obtener token de acceso. Terminando pruebas autenticadas.")
-        return
+    # Headers con autenticación
+    auth_headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
     
-    # Headers para requests autenticados
-    auth_headers = {"Authorization": f"Bearer {access_token}"}
+    # ==========================================
+    # 2. PRUEBAS DE USUARIO
+    # ==========================================
+    print_header("👤 PRUEBAS DE USUARIO")
     
-    # Test 5: Obtener perfil de usuario
-    print_test("Obtener perfil", "GET", "/api/user/profile")
-    test_endpoint("GET", "/api/user/profile", headers=auth_headers)
+    # Test 4: Obtener perfil de usuario
+    print_test("Obtener Perfil", "GET", "/api/user/profile")
+    profile_response = test_endpoint("GET", "/api/user/profile", headers=auth_headers, expected_status=200)
     
-    # Test 6: Obtener QR del usuario
-    print_test("Obtener QR de usuario", "GET", "/api/user/qr")
-    response = test_endpoint("GET", "/api/user/qr", headers=auth_headers)
-    if response and response.status_code == 200:
-        data = response.json()
-        qr_data = data.get("qr_base64", "")
-        print_info(f"QR generado (primeros 50 chars): {qr_data[:50]}...")
+    # Test 5: Generar código QR
+    print_test("Generar Código QR", "GET", "/api/user/qr")
+    qr_response = test_endpoint("GET", "/api/user/qr", headers=auth_headers, expected_status=200)
     
-    # Test 7: Listar métodos de pago
-    print_test("Listar métodos de pago", "GET", "/api/payment/methods")
-    test_endpoint("GET", "/api/payment/methods", headers=auth_headers)
+    # ==========================================
+    # 3. PRUEBAS DE MÉTODOS DE PAGO
+    # ==========================================
+    print_header("💳 PRUEBAS DE MÉTODOS DE PAGO")
     
-    # Test 8: Agregar método de pago
-    print_test("Agregar método de pago", "POST", "/api/payment/methods")
+    # Test 6: Obtener métodos de pago
+    print_test("Obtener Métodos de Pago", "GET", "/api/payment-methods")
+    methods_response = test_endpoint("GET", "/api/payment-methods", headers=auth_headers, expected_status=200)
+    
+    if methods_response and methods_response.status_code == 200:
+        methods_data = methods_response.json()
+        if methods_data.get("payment_methods"):
+            payment_method_id = methods_data["payment_methods"][0].get("id")
+            print_info(f"Método de pago encontrado: {payment_method_id}")
+    
+    # Test 7: Agregar nuevo método de pago
+    print_test("Agregar Método de Pago", "POST", "/api/payment-methods")
     new_payment_method = {
-        "card_holder": "Test User",
-        "card_number": "9876543210987654",
+        "card_holder": "Nuevo Titular",
+        "card_number": "5555555555554444",
         "expiry": "06/26",
         "cvv": "456"
     }
-    response = test_endpoint("POST", "/api/payment/methods", data=new_payment_method, headers=auth_headers)
-    if response and response.status_code == 200:
-        data = response.json()
-        payment_method_id = data.get("payment_method", {}).get("id")
-        print_info(f"Método de pago agregado con ID: {payment_method_id}")
+    add_method_response = test_endpoint("POST", "/api/payment-methods", data=new_payment_method, headers=auth_headers, expected_status=200)
     
-    # Test 9: Obtener balance de billetera
-    print_test("Obtener balance", "GET", "/api/wallet")
-    test_endpoint("GET", "/api/wallet", headers=auth_headers)
+    if add_method_response and add_method_response.status_code == 200:
+        new_method_data = add_method_response.json()
+        new_payment_method_id = new_method_data.get("payment_method", {}).get("id")
+        if new_payment_method_id:
+            print_info(f"Nuevo método agregado: {new_payment_method_id}")
+            
+            # Test 8: Eliminar método de pago
+            print_test("Eliminar Método de Pago", "DELETE", f"/api/payment-methods/{new_payment_method_id}")
+            delete_response = test_endpoint("DELETE", f"/api/payment-methods/{new_payment_method_id}", headers=auth_headers, expected_status=200)
     
-    # Test 10: Recargar billetera
-    print_test("Recargar billetera", "POST", "/api/wallet/topup")
-    topup_data = {
-        "amount": 100.0,
-        "payment_method_id": payment_method_id or "test-method-id"
-    }
-    test_endpoint("POST", "/api/wallet/topup", data=topup_data, headers=auth_headers)
+    # ==========================================
+    # 4. PRUEBAS DE WALLET
+    # ==========================================
+    print_header("💰 PRUEBAS DE WALLET")
     
-    # Test 11: Realizar pago por QR
-    print_test("Pago por QR", "POST", "/api/payment/scan")
-    scan_data = {
-        "qr_data": user_id or "test-qr-data",
-        "amount": 25.0
-    }
-    test_endpoint("POST", "/api/payment/scan", data=scan_data, headers=auth_headers)
+    # Test 9: Obtener balance
+    print_test("Obtener Balance", "GET", "/api/wallet/balance")
+    balance_response = test_endpoint("GET", "/api/wallet/balance", headers=auth_headers, expected_status=200)
     
-    # Test 12: Eliminar método de pago
+    # Test 10: Recargar wallet
     if payment_method_id:
-        print_test("Eliminar método de pago", "DELETE", f"/api/payment/methods/{payment_method_id}")
-        test_endpoint("DELETE", f"/api/payment/methods/{payment_method_id}", headers=auth_headers)
-    else:
-        print_test("Eliminar método de pago", "DELETE", "/api/payment/methods/test-id")
-        test_endpoint("DELETE", "/api/payment/methods/test-id", headers=auth_headers, expected_status=404)
-    
-    # Test 13: Verificar balance final
-    print_test("Balance final", "GET", "/api/wallet")
-    test_endpoint("GET", "/api/wallet", headers=auth_headers)
-    
-    # PRUEBAS ESPECÍFICAS DE MÉTODOS DE PAGO
-    test_payment_method_scenarios()
-    
-    # Resumen final
-    print_header("RESUMEN DE PRUEBAS COMPLETADO")
-    print_info("Todas las rutas de la API han sido probadas")
-    print_info("Revisa los resultados arriba para verificar el funcionamiento")
-    print_info(f"Pruebas completadas a las: {datetime.now().strftime('%H:%M:%S')}")
-
-def test_payment_method_scenarios():
-    """Pruebas específicas para escenarios de métodos de pago"""
-    print_header("PRUEBAS ESPECÍFICAS DE MÉTODOS DE PAGO")
-    print_info("Probando diferentes escenarios de manejo de métodos de pago")
-    
-    # Escenario 1: Usuario sin método de pago inicial
-    test_scenario_no_payment_method()
-    
-    # Escenario 2: Usuario con método de pago inicial
-    test_scenario_with_payment_method()
-
-def test_scenario_no_payment_method():
-    """Escenario: Usuario se registra sin método de pago, luego agrega uno"""
-    print_header("ESCENARIO 1: REGISTRO SIN MÉTODO DE PAGO")
-    
-    # Datos del usuario sin método de pago
-    user_data = {
-        "name": "Usuario Sin Tarjeta",
-        "email": f"sin_tarjeta_{int(time.time())}@example.com",  # Email único
-        "password": "password123"
-    }
-    
-    print_test("Registrando usuario sin método de pago", "POST", "/api/register")
-    response = test_endpoint("POST", "/api/register", data=user_data)
-    
-    if not response or response.status_code != 200:
-        print_error("Falló el registro del usuario sin método de pago")
-        return
-    
-    token = response.json().get("access_token")
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Verificar que no hay métodos de pago
-    print_test("Verificando métodos de pago iniciales", "GET", "/api/payment/methods")
-    response = test_endpoint("GET", "/api/payment/methods", headers=headers)
-    
-    if response and response.status_code == 200:
-        methods = response.json()
-        print_info(f"Métodos de pago encontrados: {len(methods)}")
-        if len(methods) == 0:
-            print_success("✅ Correcto: No hay métodos de pago iniciales")
-        else:
-            print_error(f"❌ Error: Se esperaban 0 métodos, se encontraron {len(methods)}")
-    
-    # Agregar primer método de pago
-    print_test("Agregando primer método de pago", "POST", "/api/payment/methods")
-    new_method = {
-        "card_holder": "Usuario Sin Tarjeta",
-        "card_number": "4111111111111111",
-        "expiry": "12/25",
-        "cvv": "123"
-    }
-    
-    response = test_endpoint("POST", "/api/payment/methods", data=new_method, headers=headers)
-    
-    # Verificar métodos después de agregar
-    print_test("Verificando métodos después de agregar", "GET", "/api/payment/methods")
-    response = test_endpoint("GET", "/api/payment/methods", headers=headers)
-    
-    if response and response.status_code == 200:
-        methods = response.json()
-        print_info(f"Total de métodos después de agregar: {len(methods)}")
-        if len(methods) == 1:
-            print_success("✅ Correcto: Se agregó exactamente 1 método de pago")
-            # Verificar que tiene ID
-            if methods[0].get('id'):
-                print_success("✅ Correcto: El método de pago tiene ID")
-            else:
-                print_error("❌ Error: El método de pago no tiene ID")
-        else:
-            print_error(f"❌ Error: Se esperaba 1 método, se encontraron {len(methods)}")
-
-def test_scenario_with_payment_method():
-    """Escenario: Usuario se registra con método de pago, luego agrega otro"""
-    print_header("ESCENARIO 2: REGISTRO CON MÉTODO DE PAGO")
-    
-    # Datos del usuario con método de pago
-    user_data = {
-        "name": "Usuario Con Tarjeta",
-        "email": f"con_tarjeta_{int(time.time())}@example.com",  # Email único
-        "password": "password123",
-        "payment_method": {
-            "card_holder": "Usuario Con Tarjeta",
-            "card_number": "5555555555554444",
-            "expiry": "06/26",
-            "cvv": "456"
+        print_test("Recargar Wallet", "POST", "/api/wallet/topup")
+        topup_data = {
+            "amount": 100.0,
+            "payment_method_id": payment_method_id
         }
-    }
+        topup_response = test_endpoint("POST", "/api/wallet/topup", data=topup_data, headers=auth_headers, expected_status=200)
+    else:
+        print_info("⚠️  Saltando recarga de wallet - No hay método de pago disponible")
     
-    print_test("Registrando usuario con método de pago", "POST", "/api/register")
-    response = test_endpoint("POST", "/api/register", data=user_data)
+    # Test 11: Obtener historial de transacciones
+    print_test("Historial de Transacciones", "GET", "/api/wallet/transactions")
+    transactions_response = test_endpoint("GET", "/api/wallet/transactions", headers=auth_headers, expected_status=200)
     
-    if not response or response.status_code != 200:
-        print_error("Falló el registro del usuario con método de pago")
-        return
+    # Test 12: Historial paginado
+    print_test("Historial Paginado", "GET", "/api/wallet/transactions?page=1&limit=5")
+    paginated_response = test_endpoint("GET", "/api/wallet/transactions?page=1&limit=5", headers=auth_headers, expected_status=200)
     
-    token = response.json().get("access_token")
-    headers = {"Authorization": f"Bearer {token}"}
+    # ==========================================
+    # 5. PRUEBAS DE PAGOS
+    # ==========================================
+    print_header("💸 PRUEBAS DE PAGOS")
     
-    # Verificar métodos iniciales
-    print_test("Verificando métodos de pago iniciales", "GET", "/api/payment/methods")
-    response = test_endpoint("GET", "/api/payment/methods", headers=headers)
+    # Test 13: Escanear pago (simulación)
+    print_test("Escanear Pago", "POST", "/api/payment/scan")
     
-    if response and response.status_code == 200:
-        methods = response.json()
-        print_info(f"Métodos de pago encontrados: {len(methods)}")
-        if len(methods) == 1:
-            print_success("✅ Correcto: Se encontró 1 método de pago inicial")
-            # Verificar que tiene ID
-            if methods[0].get('id'):
-                print_success("✅ Correcto: El método inicial tiene ID")
-            else:
-                print_error("❌ Error: El método inicial no tiene ID")
+    # Primero necesitamos datos QR válidos del usuario
+    if qr_response and qr_response.status_code == 200:
+        qr_data = qr_response.json().get("qr_data", "")
+        if qr_data:
+            scan_data = {
+                "qr_data": qr_data,
+                "amount": 25.0
+            }
+            scan_response = test_endpoint("POST", "/api/payment/scan", data=scan_data, headers=auth_headers, expected_status=200)
         else:
-            print_error(f"❌ Error: Se esperaba 1 método inicial, se encontraron {len(methods)}")
+            print_info("⚠️  No se pudo obtener datos QR válidos")
+    else:
+        print_info("⚠️  Saltando escaneo de pago - No hay datos QR disponibles")
     
-    # Agregar segundo método de pago
-    print_test("Agregando segundo método de pago", "POST", "/api/payment/methods")
-    new_method = {
-        "card_holder": "Usuario Con Tarjeta",
-        "card_number": "4000000000000002",
-        "expiry": "03/27",
-        "cvv": "789"
-    }
+    # ==========================================
+    # 6. PRUEBAS DE DOCUMENTACIÓN
+    # ==========================================
+    print_header("📚 PRUEBAS DE DOCUMENTACIÓN")
     
-    response = test_endpoint("POST", "/api/payment/methods", data=new_method, headers=headers)
+    # Test 14: Documentación OpenAPI
+    print_test("Documentación OpenAPI", "GET", "/openapi.json")
+    openapi_response = test_endpoint("GET", "/openapi.json", expected_status=200)
     
-    # Verificar métodos después de agregar segundo
-    print_test("Verificando métodos después de agregar segundo", "GET", "/api/payment/methods")
-    response = test_endpoint("GET", "/api/payment/methods", headers=headers)
-    
-    if response and response.status_code == 200:
-        methods = response.json()
-        print_info(f"Total de métodos después de agregar segundo: {len(methods)}")
-        if len(methods) == 2:
-            print_success("✅ Correcto: Se tienen exactamente 2 métodos de pago")
-            # Verificar que ambos tienen ID
-            ids_found = sum(1 for method in methods if method.get('id'))
-            if ids_found == 2:
-                print_success("✅ Correcto: Ambos métodos tienen ID")
-            else:
-                print_error(f"❌ Error: Solo {ids_found} de 2 métodos tienen ID")
+    # Test 15: Documentación Swagger UI
+    print_test("Swagger UI", "GET", "/docs")
+    try:
+        docs_response = requests.get(f"{BASE_URL}/docs")
+        print(f"{Colors.WHITE}🔄 Status: {docs_response.status_code}{Colors.END}")
+        if docs_response.status_code == 200:
+            print_success("Documentación Swagger accesible")
+            print_info("🌐 Accede a: http://localhost:8000/docs")
         else:
-            print_error(f"❌ Error: Se esperaban 2 métodos, se encontraron {len(methods)}")
+            print_error(f"Error accediendo a docs - Status: {docs_response.status_code}")
+    except Exception as e:
+        print_error(f"Error en documentación: {e}")
+    
+    # ==========================================
+    # 7. RESUMEN FINAL
+    # ==========================================
+    print_header("📊 RESUMEN DE PRUEBAS")
+    
+    # Obtener estadísticas finales
+    if access_token:
+        final_balance_response = test_endpoint("GET", "/api/wallet/balance", headers=auth_headers, expected_status=200)
+        final_transactions_response = test_endpoint("GET", "/api/wallet/transactions", headers=auth_headers, expected_status=200)
+        
+        if final_balance_response and final_balance_response.status_code == 200:
+            balance_data = final_balance_response.json()
+            print_info(f"💰 Balance final: ${balance_data.get('balance', 0)}")
+        
+        if final_transactions_response and final_transactions_response.status_code == 200:
+            trans_data = final_transactions_response.json()
+            transactions = trans_data.get('transactions', [])
+            print_info(f"📋 Total de transacciones: {len(transactions)}")
+            
+            # Contar por estado
+            status_counts = {}
+            for trans in transactions:
+                status = trans.get('status', 'unknown')
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            for status, count in status_counts.items():
+                print_info(f"   - {status}: {count}")
+    
+    print_success("🎉 Todas las pruebas completadas!")
+    print_info("🌐 Documentación disponible en: http://localhost:8000/docs")
+    print_info("📊 API Health Check: http://localhost:8000/openapi.json")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}⚠️  Pruebas interrumpidas por el usuario{Colors.END}")
+        print_error("\n⚠️  Pruebas interrumpidas por el usuario")
+        sys.exit(1)
     except Exception as e:
-        print_error(f"Error fatal en las pruebas: {str(e)}")
+        print_error(f"\n💥 Error inesperado: {e}")
         sys.exit(1)

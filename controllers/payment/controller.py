@@ -1,256 +1,148 @@
-from flask_restful import Resource, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from fastapi import HTTPException, Depends
 from models.user.model import UserModel
 from models.transaction.model import TransactionModel, TransactionType, TransactionStatus
-from utils.server_response import ServerResponse
-from utils.message_codes import *
-from middleware.auth import auth_required
+from models.auth.schemas import PaymentMethod, PaymentMethodIn, ScanRequest
+from middleware.auth import get_current_user
+from datetime import datetime
+from uuid import uuid4
 import logging
-import qrcode
-import io
-import base64
 
-class PaymentController(Resource):
-    @auth_required()
-    def post(self, current_user=None):
+logger = logging.getLogger(__name__)
+
+class PaymentController:
+    @staticmethod
+    def scan_payment(scan_data: ScanRequest, current_user: UserModel = Depends(get_current_user)):
         """
-        Procesa el pago de un pasaje escaneando el QR del usuario
+        Procesar pago por escaneo de QR
         """
-        try:
-            data = request.get_json()
-            
-            # Validar datos de entrada
-            if not data or 'qr_data' not in data:
-                return ServerResponse.validation_error(message="Se requiere el código QR del usuario")
-            
-            # Aquí iría la lógica para validar el código QR
-            # Por ahora, asumimos que el qr_data es el ID del usuario
-            user_id = data['qr_data']
-            
-            # Validar que el usuario exista
-            user = UserModel.find_by_id(user_id)
-            if not user:
-                return ServerResponse.user_not_found()
-            
-            # Monto fijo por pasaje (podría venir en el QR o configurarse)
-            ticket_price = 2.50  # Ejemplo: $2.50 por pasaje
-            
-            # Verificar saldo suficiente
-            if user.balance < ticket_price:
-                return ServerResponse.insufficient_balance(required_amount=ticket_price, current_balance=user.balance)
-            
-            # Procesar el pago
-            transaction, error = TransactionModel.process_payment(
-                user_id=user._id,
-                amount=ticket_price,      
-                description=f"Pago de pasaje - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
-                metadata={
-                    'ticket_type': 'standard',
-                    'validator_id': current_user.get('_id') if current_user else 'system'
-                }
-            )
-            
-            if error:
-                return ServerResponse.error(
-                    f"Error al procesar el pago: {error}",
-                    status=500,
-                    message_code=PAYMENT_FAILED
+        # Verificar saldo suficiente ANTES de crear la transacción
+        if current_user.balance < scan_data.amount:
+            # Crear transacción rechazada por saldo insuficiente
+            try:
+                transaction = TransactionModel.create(
+                    user_id=str(current_user._id),
+                    amount=-scan_data.amount,
+                    transaction_type=TransactionType.PAYMENT,
+                    description=f"Pago por QR rechazado - Saldo insuficiente - Código: {scan_data.qr_data}",
+                    metadata={"qr_data": scan_data.qr_data, "rejection_reason": "insufficient_balance"}
                 )
-            
-            # Actualizar saldo del usuario
-            success, message = user.update_balance(-ticket_price)
-            if not success:
-                # Revertir la transacción si no se pudo actualizar el saldo
                 transaction.update_status(TransactionStatus.FAILED)
-                return ServerResponse.error(
-                    "Error al actualizar el saldo",
-                    status=500,
-                    message_code=PAYMENT_FAILED
-                )
+            except Exception as e:
+                logger.warning(f"Error al registrar transacción rechazada: {str(e)}")
             
-            return ServerResponse.success(
-                data={
-                    'message': 'Pago exitoso',
-                    'transaction_id': str(transaction._id),
-                    'amount': ticket_price,
-                    'balance': user.balance
-                },
-                message_code=PAYMENT_SUCCESSFUL
+            raise HTTPException(status_code=400, detail="Saldo insuficiente")
+        
+        # Crear transacción y procesar pago
+        transaction = None
+        try:
+            # 1. Crear transacción
+            transaction = TransactionModel.create(
+                user_id=str(current_user._id),
+                amount=-scan_data.amount,  # Negativo porque es un pago
+                transaction_type=TransactionType.PAYMENT,
+                description=f"Pago por QR - Código: {scan_data.qr_data}",
+                metadata={"qr_data": scan_data.qr_data}
             )
             
+            # 2. Procesar el pago (actualizar balance)
+            new_balance = current_user.balance - scan_data.amount
+            if current_user.update_balance(new_balance):
+                # 3. Marcar como completada (aprobada)
+                transaction.update_status(TransactionStatus.COMPLETED)
+                return {"message": "Pago realizado", "balance": current_user.balance}
+            else:
+                # 4. Error al actualizar balance - marcar como fallida
+                transaction.update_status(TransactionStatus.FAILED)
+                raise HTTPException(status_code=500, detail="Error al procesar el pago")
+                
+        except HTTPException:
+            # Re-lanzar HTTPException
+            raise
         except Exception as e:
-            logging.exception("Error al procesar pago:")
-            return ServerResponse.error(
-                "Error al procesar el pago",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
+            # Error inesperado - marcar transacción como fallida si existe
+            if transaction:
+                transaction.update_status(TransactionStatus.FAILED)
+            logger.error(f"Error inesperado en pago por QR: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-class PaymentMethodController(Resource):
-    @auth_required()
-    def get(self, current_user=None):
+class PaymentMethodController:
+    @staticmethod
+    def get_payment_methods(current_user: UserModel = Depends(get_current_user)):
         """
-        Obtiene los métodos de pago del usuario
-        """
-        try:
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.user_not_found()
-            
-            # Ocultar información sensible de los métodos de pago
-            payment_methods = []
-            for method in user.payment_methods:
-                payment_methods.append({
-                    'id': method.get('id'),
-                    'card_brand': method.get('card_brand'),
-                    'last4': method.get('card_number_last4'),
-                    'expiry': method.get('expiry'),
-                    'is_default': method.get('is_default', False),
-                    'created_at': method.get('created_at')
-                })
-            
-            return ServerResponse.success(
-                data={
-                    'payment_methods': payment_methods
-                }
-            )
-            
-        except Exception as e:
-            logging.exception("Error al obtener métodos de pago:")
-            return ServerResponse.error(
-                "Error al obtener los métodos de pago",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
-    
-    @auth_required()
-    def post(self, current_user=None):
-        """
-        Agrega un nuevo método de pago
+        Obtener métodos de pago del usuario
         """
         try:
-            data = request.get_json()
-            
-            # Validar datos de la tarjeta
-            required_fields = ['card_holder', 'card_number', 'expiry', 'cvv']
-            for field in required_fields:
-                if field not in data:
-                    return ServerResponse.error(
-                        f"El campo {field} es requerido",
-                        status=400,
-                        message_code=VALIDATION_ERROR
-                    )
-            
-            # Validar formato de la tarjeta
-            if not self._is_valid_card(data):
-                return ServerResponse.error(
-                    "Datos de tarjeta inválidos",
-                    status=400,
-                    message_code=INVALID_CARD
-                )
-            
-            # Obtener usuario
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.user_not_found()
-            
-            # Agregar método de pago
-            try:
-                payment_method = user.add_payment_method(data)
-                
-                return ServerResponse.success(
-                    data={
-                        'message': 'Método de pago agregado exitosamente',
-                        'payment_method_id': payment_method['id']
-                    },
-                    status=201,
-                    message_code=PAYMENT_METHOD_ADDED
-                )
-                
-            except ValueError as e:
-                return ServerResponse.error(
-                    str(e),
-                    status=400,
-                    message_code=INVALID_CARD_DETAILS
-                )
-            
+            return {
+                "payment_methods": current_user.payment_methods,
+                "count": len(current_user.payment_methods)
+            }
         except Exception as e:
-            logging.exception("Error al agregar método de pago:")
-            return ServerResponse.error(
-                "Error al agregar el método de pago",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
-    
-    @auth_required()
-    def delete(self, method_id, current_user=None):
-        """
-        Elimina un método de pago
-        """
-        try:
-            if not method_id:
-                return ServerResponse.error(
-                    "Se requiere el ID del método de pago",
-                    status=400,
-                    message_code=VALIDATION_ERROR
-                )
-            
-            # Obtener usuario
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.user_not_found()
-            
-            # Eliminar método de pago
-            try:
-                success = user.remove_payment_method(method_id)
-                
-                if not success:
-                    return ServerResponse.error(
-                        "No se pudo eliminar el método de pago",
-                        status=400,
-                        message_code=PAYMENT_METHOD_NOT_FOUND
-                    )
-                
-                return ServerResponse.success(
-                    data={'message': 'Método de pago eliminado exitosamente'},
-                    message_code=PAYMENT_METHOD_REMOVED
-                )
-                
-            except ValueError as e:
-                return ServerResponse.error(
-                    str(e),
-                    status=400,
-                    message_code=VALIDATION_ERROR
-                )
-            
-        except Exception as e:
-            logging.exception("Error al eliminar método de pago:")
-            return ServerResponse.error(
-                "Error al eliminar el método de pago",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Error al obtener métodos de pago: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
     
     @staticmethod
-    def _is_valid_card(card_data):
-        """Valida los datos básicos de una tarjeta"""
+    def add_payment_method(payment_method: PaymentMethodIn, current_user: UserModel = Depends(get_current_user)):
+        """
+        Agregar nuevo método de pago
+        """
         try:
-            # Validar número de tarjeta (solo verificar que sean dígitos y longitud)
-            card_number = str(card_data.get('card_number', '')).replace(' ', '')
-            if not (13 <= len(card_number) <= 19) or not card_number.isdigit():
-                return False
-                
-            # Validar fecha de expiración (formato MM/YY)
-            expiry = card_data.get('expiry', '')
-            if not re.match(r'^(0[1-9]|1[0-2])\/([0-9]{2})$', expiry):
-                return False
-                
-            # Validar CVV (3 o 4 dígitos)
-            cvv = str(card_data.get('cvv', ''))
-            if not (3 <= len(cvv) <= 4) or not cvv.isdigit():
-                return False
-                
-            return True
+            # Limpiar métodos de pago vacíos antes de agregar uno nuevo
+            current_user.clean_empty_payment_methods()
             
-        except Exception:
-            return False
+            # Crear método de pago con ID y timestamps
+            new_method = PaymentMethod(
+                id=str(uuid4()),
+                card_holder=payment_method.card_holder,
+                card_number=payment_method.card_number,
+                expiry=payment_method.expiry,
+                cvv=payment_method.cvv,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            
+            # Agregar método de pago
+            if current_user.add_payment_method(new_method.dict()):
+                return {
+                    "message": "Método de pago agregado",
+                    "payment_method": new_method.dict()
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Error al agregar método de pago")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error al agregar método de pago: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
+    
+    @staticmethod
+    def delete_payment_method(method_id: str, current_user: UserModel = Depends(get_current_user)):
+        """
+        Eliminar método de pago
+        """
+        try:
+            # Buscar el método de pago
+            method_found = False
+            updated_methods = []
+            
+            for method in current_user.payment_methods:
+                if method.get('id') == method_id:
+                    method_found = True
+                else:
+                    updated_methods.append(method)
+            
+            if not method_found:
+                raise HTTPException(status_code=404, detail="Método de pago no encontrado")
+            
+            # Actualizar métodos de pago
+            current_user.payment_methods = updated_methods
+            if current_user.save():
+                return {"message": "Método de pago eliminado"}
+            else:
+                raise HTTPException(status_code=500, detail="Error al eliminar método de pago")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error al eliminar método de pago: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")

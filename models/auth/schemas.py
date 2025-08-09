@@ -41,3 +41,7 @@ class TopupRequest(BaseModel):
 class ScanRequest(BaseModel):
     qr_data: str
     amount: float
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
