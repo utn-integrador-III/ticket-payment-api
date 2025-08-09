@@ -121,6 +121,8 @@ La documentación interactiva de la API está disponible en:
 - `POST /api/register` - Registrar nuevo usuario
 - `POST /api/login` - Iniciar sesión
 - `PUT /api/change-password` - Cambiar contraseña del usuario
+- `POST /token` - Login OAuth2 (form data)
+- `GET /` - Verificar estado del servidor
 
 #### Usuario
 
@@ -157,6 +159,7 @@ La documentación interactiva de la API está disponible en:
 
 ### Registrar un nuevo usuario
 
+```http
 POST /api/register
 Content-Type: application/json
 
@@ -165,14 +168,17 @@ Content-Type: application/json
   "email": "juan@example.com",
   "password": "MiClaveSegura123",
   "payment_method": {
+    "card_holder": "Juan Pérez",
     "card_number": "4111111111111111",
     "expiry": "12/25",
     "cvv": "123"
   }
 }
+```
 
-### Iniciar sesión
+### Iniciar sesión (JSON)
 
+```http
 POST /api/login
 Content-Type: application/json
 
@@ -180,34 +186,63 @@ Content-Type: application/json
   "email": "juan@example.com",
   "password": "MiClaveSegura123"
 }
+```
 
-### Cambiar contraseña
+### Login OAuth2 (Form Data)
 
-PUT /api/change-password
+```http
+POST /token
+Content-Type: application/x-www-form-urlencoded
+
+username=juan@example.com&password=MiClaveSegura123
+```
+
+### Agregar método de pago
+
+```http
+POST /api/payment/methods
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "current_password": "MiClaveSegura123",
-  "new_password": "NuevaClaveSegura456"
+  "card_holder": "María García",
+  "card_number": "5555555555554444",
+  "expiry": "06/26",
+  "cvv": "456"
 }
+```
 
 ### Recargar saldo
 
+```http
 POST /api/wallet/topup
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "amount": 20.00,
+  "amount": 100.00,
   "payment_method_id": "pm_123456789"
 }
+```
+
+### Realizar pago por QR
+
+```http
+POST /api/payment/scan
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "qr_data": "user_id_or_merchant_code",
+  "amount": 25.50
+}
+```
 
 ## Pruebas
 
 Para ejecutar las pruebas:
 
-python -m pytest tests/
+python pruebas/test_api.py
 
 ## Despliegue
 
