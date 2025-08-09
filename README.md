@@ -120,6 +120,7 @@ La documentación interactiva de la API está disponible en:
 
 - `POST /api/register` - Registrar nuevo usuario
 - `POST /api/login` - Iniciar sesión
+- `PUT /api/change-password` - Cambiar contraseña del usuario
 
 #### Usuario
 
@@ -178,6 +179,17 @@ Content-Type: application/json
 {
   "email": "juan@example.com",
   "password": "MiClaveSegura123"
+}
+
+### Cambiar contraseña
+
+PUT /api/change-password
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "current_password": "MiClaveSegura123",
+  "new_password": "NuevaClaveSegura456"
 }
 
 ### Recargar saldo

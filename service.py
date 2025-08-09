@@ -8,6 +8,7 @@ def add_service_layer(api: Api):
     # Authentication
     api.add_resource(AuthController, '/register', endpoint='register')
     api.add_resource(AuthController, '/login', endpoint='login')
+    api.add_resource(AuthController, '/change-password', endpoint='change_password')
     
     # User
     api.add_resource(UserQRController, '/user/qr', endpoint='user_qr')

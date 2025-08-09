@@ -42,7 +42,7 @@ class PaymentController(Resource):
             # Procesar el pago
             transaction, error = TransactionModel.process_payment(
                 user_id=user._id,
-                amount=ticket_price,
+                amount=ticket_price,      
                 description=f"Pago de pasaje - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
                 metadata={
                     'ticket_type': 'standard',

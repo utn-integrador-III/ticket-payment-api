@@ -76,3 +76,21 @@ class UserModel:
         except Exception as e:
             logging.exception("Error al eliminar método de pago:")
             return False
+
+    def update_password(self, new_password_hash):
+        """
+        Actualiza la contraseña del usuario
+        """
+        try:
+            result = db.users.update_one(
+                {'_id': self._id},
+                {'$set': {'password': new_password_hash, 'updated_at': datetime.utcnow()}}
+            )
+            if result.modified_count > 0:
+                self.password = new_password_hash
+                self.updated_at = datetime.utcnow()
+                return True
+            return False
+        except Exception as e:
+            logging.exception("Error al actualizar contraseña:")
+            return False

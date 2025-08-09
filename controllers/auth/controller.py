@@ -1,5 +1,5 @@
 from flask_restful import Resource, request
-from flask_jwt_extended import create_access_token, create_refresh_token
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from models.user.model import UserModel
 from utils.server_response import ServerResponse
 from utils.message_codes import *
@@ -206,3 +206,81 @@ class AuthController(Resource):
             
         except Exception:
             return False
+
+    def put(self):
+        """
+        Maneja la modificación de contraseña
+        """
+        endpoint = request.endpoint
+        
+        if endpoint == 'change_password':
+            return self._change_password()
+        
+        return ServerResponse.error("Endpoint no válido", status=404)
+    
+    @jwt_required()
+    def _change_password(self):
+        """
+        Cambia la contraseña del usuario autenticado
+        """
+        try:
+            data = request.get_json()
+            
+            # Validar campos requeridos
+            if not data.get('current_password') or not data.get('new_password'):
+                return ServerResponse.validation_error(
+                    message="Contraseña actual y nueva contraseña son requeridas"
+                )
+            
+            # Obtener ID del usuario del token JWT
+            user_id = get_jwt_identity()
+            
+            # Buscar usuario
+            user = UserModel.find_by_id(user_id)
+            if not user:
+                return ServerResponse.error(
+                    "Usuario no encontrado",
+                    status=404,
+                    message_code=USER_NOT_FOUND
+                )
+            
+            # Verificar contraseña actual
+            if not self._check_password(data['current_password'], user.password):
+                return ServerResponse.error(
+                    "Contraseña actual incorrecta",
+                    status=401,
+                    message_code=INVALID_CREDENTIALS
+                )
+            
+            # Validar fortaleza de la nueva contraseña
+            if not self._is_strong_password(data['new_password']):
+                return ServerResponse.weak_password()
+            
+            # Verificar que la nueva contraseña sea diferente a la actual
+            if self._check_password(data['new_password'], user.password):
+                return ServerResponse.error(
+                    "La nueva contraseña debe ser diferente a la actual",
+                    status=400,
+                    message_code=VALIDATION_ERROR
+                )
+            
+            # Generar hash de la nueva contraseña
+            new_hashed_password = self._hash_password(data['new_password'])
+            
+            # Actualizar contraseña en la base de datos
+            user.update_password(new_hashed_password)
+            
+            return ServerResponse.success(
+                data={
+                    'message': 'Contraseña actualizada exitosamente'
+                },
+                message_code=PASSWORD_UPDATED
+            )
+            
+        except Exception as e:
+            logging.exception("Error al cambiar contraseña:")
+            return ServerResponse.error(
+                "Error al procesar el cambio de contraseña",
+                status=500,
+                message_code=INTERNAL_SERVER_ERROR
+            )
