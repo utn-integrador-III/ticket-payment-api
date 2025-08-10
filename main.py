@@ -1,18 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
-from typing import Optional, Dict
-from uuid import uuid4
-from pydantic import BaseModel
+from datetime import timedelta
 from decouple import config
 import logging
-import qrcode
-import base64
-import io
-from db.mongodb import db
+from models.user.model import UserModel
+from models.auth.schemas import (
+    LoginRequest, RegisterRequest, Token, UserProfile,
+    PaymentMethodIn, TopupRequest, ScanRequest, ChangePasswordRequest
+)
+from services.auth_service import AuthService
+from controllers.auth.controller import AuthController
+from controllers.user.controller import UserController
+from controllers.payment.controller import PaymentController, PaymentMethodController
+from controllers.wallet.controller import WalletController
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -40,95 +41,19 @@ app.add_middleware(
 )
 
 # Configuración de seguridad
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Modelos Pydantic
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    email: Optional[str] = None
-
-# Funciones de utilidad
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-# Almacén en memoria (solo para pruebas, reemplazar con base de datos real)
-USERS_DB: Dict[str, dict] = {}
-
-# Modelos de registro
-class PaymentMethod(BaseModel):
-    card_number: str
-    expiry: str
-    cvv: str
-
-class RegisterRequest(BaseModel):
-    name: str
-    email: str
-    password: str
-    payment_method: Optional[PaymentMethod] = None
+# Inicializar servicio de autenticación
+auth_service = AuthService(SECRET_KEY, ALGORITHM)
 
 # Rutas de la API
-@app.post("/api/register")
-async def register_user(payload: RegisterRequest):
-    """Registra un nuevo usuario (memoria y en MongoDB)"""
-    email = payload.email.lower().strip()
-    if email in USERS_DB:
-        raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado")
-
-    user_id = str(uuid4())
-    user_data = {
-        "id": user_id,
-        "name": payload.name.strip(),
-        "email": email,
-        "password": get_password_hash(payload.password),
-        "balance": 0.0,
-        "payment_methods": [payload.payment_method.dict()] if payload.payment_method else []
-    }
-    USERS_DB[email] = user_data
-
-    # Guardar en MongoDB
-    db["users"].insert_one(user_data)
-
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": email}, expires_delta=access_token_expires)
-
-    return {
-        "message": "Usuario registrado exitosamente",
-        "user_id": user_id,
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
-
 @app.get("/")
 async def read_root():
     return {"message": "Bienvenido a la API de pagos con QR"}
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    # Aquí irá la lógica de autenticación
-    # Por ahora, es un ejemplo básico
-    user = {"email": form_data.username}  # Reemplazar con la lógica real
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user["email"]}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return AuthController.oauth2_login(form_data)
 
 # Incluir routers de otros módulos
 # from routers import users, payments, wallet
@@ -137,144 +62,79 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 # app.include_router(wallet.router, prefix="/api/wallet", tags=["wallet"])
 
 # ---------------------------
-# Modelo y endpoint de Login
+# Endpoint de Login
 # ---------------------------
-class LoginRequest(BaseModel):
-    email: str
-    password: str
+
+@app.post("/api/register")
+async def register(user: RegisterRequest):
+    return AuthController.register(user)
 
 @app.post("/api/login")
-async def login_user(payload: LoginRequest):
-    email = payload.email.lower().strip()
-    user = USERS_DB.get(email)
-
-    # Si no está en memoria, buscar en MongoDB
-    if not user:
-        user_db = db["users"].find_one({"email": email})
-        if not user_db:
-            raise HTTPException(status_code=401, detail="Credenciales inválidas")
-        # MongoDB guarda _id como ObjectId, lo convertimos a str
-        user = {
-            "id": str(user_db.get("id", user_db.get("_id", ""))),
-            "name": user_db["name"],
-            "email": user_db["email"],
-            "password": user_db["password"],
-            "balance": user_db.get("balance", 0.0),
-            "payment_methods": user_db.get("payment_methods", [])
-        }
-        # Opcional: guardar en memoria para siguientes logins
-        USERS_DB[email] = user
-
-    if not verify_password(payload.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": email}, expires_delta=access_token_expires)
-
-    return {
-        "message": "Inicio de sesión exitoso",
-        "user_id": user["id"],
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+async def login(user: LoginRequest):
+    return AuthController.login(user)
 
 # ---------------------------
 # Dependencia para obtener usuario actual desde JWT
 # ---------------------------
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None or email not in USERS_DB:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
-    return USERS_DB[email]
+def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel:
+    return auth_service.get_current_user(token)
 
 # ---------------------------
 # Endpoints de usuario
 # ---------------------------
-class UserProfile(BaseModel):
-    id: str
-    name: str
-    email: str
-    balance: float
-    payment_methods: list[dict]
-
 @app.get("/api/user/profile", response_model=UserProfile)
-async def get_profile(current_user: dict = Depends(get_current_user)):
-    return {
-        "id": current_user["id"],
-        "name": current_user["name"],
-        "email": current_user["email"],
-        "balance": current_user["balance"],
-        "payment_methods": current_user["payment_methods"]
-    }
+async def get_profile(current_user: UserModel = Depends(get_current_user)):
+    return UserController.get_profile(current_user)
 
 @app.get("/api/user/qr")
-async def get_user_qr(current_user: dict = Depends(get_current_user)):
-    img = qrcode.make(current_user["id"])
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    qr_b64 = base64.b64encode(buffer.getvalue()).decode()
-    return {"qr_base64": qr_b64}
+async def get_user_qr(current_user: UserModel = Depends(get_current_user)):
+    return UserController.generate_qr(current_user)
+
+@app.put("/api/user/change-password")
+async def change_password(password_data: ChangePasswordRequest, current_user: UserModel = Depends(get_current_user)):
+    return UserController.change_password(password_data, current_user)
 
 # ---------------------------
 # Endpoints de métodos de pago
 # ---------------------------
-class PaymentMethodIn(PaymentMethod):
-    pass
-
 @app.get("/api/payment/methods")
-async def list_payment_methods(current_user: dict = Depends(get_current_user)):
-    return current_user["payment_methods"]
+async def list_payment_methods(current_user: UserModel = Depends(get_current_user)):
+    return PaymentMethodController.get_payment_methods(current_user)
 
 @app.post("/api/payment/methods")
-async def add_payment_method(method: PaymentMethodIn, current_user: dict = Depends(get_current_user)):
-    method_dict = method.dict()
-    method_dict["id"] = str(uuid4())
-    current_user["payment_methods"].append(method_dict)
-    return {"message": "Método de pago agregado", "payment_method": method_dict}
+async def add_payment_method(method: PaymentMethodIn, current_user: UserModel = Depends(get_current_user)):
+    return PaymentMethodController.add_payment_method(method, current_user)
 
-@app.delete("/api/payment/methods/{method_id}")
-async def delete_payment_method(method_id: str, current_user: dict = Depends(get_current_user)):
-    methods = current_user["payment_methods"]
-    for m in methods:
-        if m.get("id") == method_id:
-            methods.remove(m)
-            return {"message": "Método de pago eliminado"}
-    raise HTTPException(status_code=404, detail="Método de pago no encontrado")
+@app.delete("/api/payment/methods/{card_holder}")
+async def delete_payment_method(card_holder: str, current_user: UserModel = Depends(get_current_user)):
+    return PaymentMethodController.delete_payment_method(card_holder, current_user)
 
 # ---------------------------
 # Endpoints de billetera
 # ---------------------------
-class TopupRequest(BaseModel):
-    amount: float
-    payment_method_id: str
-
 @app.get("/api/wallet")
-async def get_wallet_balance(current_user: dict = Depends(get_current_user)):
-    return {"balance": current_user["balance"]}
+async def get_wallet_balance(current_user: UserModel = Depends(get_current_user)):
+    return WalletController.get_balance(current_user)
+
+@app.get("/api/wallet/transactions")
+async def get_transaction_history(
+    current_user: UserModel = Depends(get_current_user),
+    limit: int = 10,
+    offset: int = 0
+):
+    return WalletController.get_transaction_history(current_user, limit, offset)
 
 @app.post("/api/wallet/topup")
-async def wallet_topup(topup: TopupRequest, current_user: dict = Depends(get_current_user)):
-    current_user["balance"] += topup.amount
-    return {"message": "Saldo recargado", "balance": current_user["balance"]}
+async def wallet_topup(topup: TopupRequest, current_user: UserModel = Depends(get_current_user)):
+    return WalletController.topup_wallet(topup, current_user)
 
 # ---------------------------
 # Endpoint de pago por QR
 # ---------------------------
-class ScanRequest(BaseModel):
-    qr_data: str
-    amount: float
-
 @app.post("/api/payment/scan")
-async def payment_scan(scan: ScanRequest, current_user: dict = Depends(get_current_user)):
-    if current_user["balance"] < scan.amount:
-        raise HTTPException(status_code=400, detail="Saldo insuficiente")
-    current_user["balance"] -= scan.amount
-    return {"message": "Pago realizado", "balance": current_user["balance"]}
+async def payment_scan(scan: ScanRequest, current_user: UserModel = Depends(get_current_user)):
+    return PaymentController.scan_payment(scan, current_user)
 
 if __name__ == "__main__":
     import uvicorn

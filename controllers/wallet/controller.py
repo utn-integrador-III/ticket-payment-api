@@ -1,111 +1,84 @@
-from flask_restful import Resource, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from fastapi import HTTPException, Depends
 from models.user.model import UserModel
 from models.transaction.model import TransactionModel, TransactionType, TransactionStatus
-from utils.server_response import ServerResponse
-from utils.message_codes import *
-from middleware.auth import auth_required
+from models.auth.schemas import TopupRequest
+from middleware.auth import get_current_user
 import logging
 
-class WalletController(Resource):
-    @auth_required()
-    def post(self, current_user=None):
+logger = logging.getLogger(__name__)
+
+class WalletController:
+    @staticmethod
+    def get_balance(current_user: UserModel = Depends(get_current_user)):
         """
-        Recarga el saldo de la billetera del usuario
+        Obtener balance de la billetera
         """
         try:
-            data = request.get_json()
-            
-            # Validar datos de entrada
-            if not data or 'amount' not in data or 'payment_method_id' not in data:
-                return ServerResponse.validation_error(message="Monto y método de pago son requeridos")
-            
-            try:
-                amount = float(data['amount'])
-                if amount <= 0:
-                    raise ValueError("El monto debe ser mayor a cero")
-            except (ValueError, TypeError):
-                return ServerResponse.validation_error(message="Monto inválido")
-            
-            # Obtener usuario
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.user_not_found()
-            
-            # Verificar que el método de pago existe
-            payment_method = next((m for m in user.payment_methods if m.get('id') == data['payment_method_id']), None)
-            if not payment_method:
-                return ServerResponse.payment_method_not_found()
-            
-            # Procesar la recarga
-            transaction, error = TransactionModel.process_topup(
-                user_id=user._id,
-                amount=amount,
-                payment_method_id=payment_method['id'],
-                description=f"Recarga de saldo - {payment_method.get('card_brand', '').title()} ••••{payment_method.get('card_number_last4', '')}",
-                metadata={
-                    'payment_method_type': 'card',
-                    'card_brand': payment_method.get('card_brand')
-                }
-            )
-            
-            if error:
-                return ServerResponse.error(
-                    f"Error al procesar la recarga: {error}",
-                    status=500,
-                    message_code=PAYMENT_FAILED
-                )
-            
-            # Actualizar saldo del usuario
-            success, message = user.update_balance(amount)
-            if not success:
-                # Revertir la transacción si no se pudo actualizar el saldo
-                transaction.update_status(TransactionStatus.FAILED)
-                return ServerResponse.error(
-                    "Error al actualizar el saldo",
-                    status=500,
-                    message_code=PAYMENT_FAILED
-                )
-            
-            return ServerResponse.success(
-                data={
-                    'message': 'Recarga exitosa',
-                    'transaction_id': str(transaction._id),
-                    'amount': amount,
-                    'new_balance': user.balance
-                },
-                message_code=TOPUP_SUCCESSFUL
-            )
-            
+            return {"balance": current_user.balance}
         except Exception as e:
-            logging.exception("Error al procesar recarga:")
-            return ServerResponse.error(
-                "Error al procesar la recarga",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Error al obtener balance: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
     
-    @auth_required()
-    def get(self, current_user=None):
+    @staticmethod
+    def topup_wallet(topup_data: TopupRequest, current_user: UserModel = Depends(get_current_user)):
         """
-        Obtiene el saldo actual del usuario
+        Recargar saldo de la billetera
         """
         try:
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.user_not_found()
+            new_balance = current_user.balance + topup_data.amount
             
-            return ServerResponse.success(
-                data={
-                    'balance': user.balance,
-                    'currency': 'USD'  # Podría venir de configuración
-                }
+            if current_user.update_balance(new_balance):
+                # Registrar transacción en el historial
+                try:
+                    transaction = TransactionModel.create(
+                        user_id=str(current_user._id),
+                        amount=topup_data.amount,
+                        transaction_type=TransactionType.TOP_UP,
+                        description=f"Recarga de saldo - Método: {topup_data.payment_method_id}",
+                        metadata={"payment_method_id": topup_data.payment_method_id}
+                    )
+                    # Marcar como completada inmediatamente (simulación de pago exitoso)
+                    transaction.update_status(TransactionStatus.COMPLETED)
+                except Exception as e:
+                    # Log error but don't fail the operation
+                    logger.warning(f"Error al registrar transacción: {str(e)}")
+                
+                return {"message": "Saldo recargado", "balance": current_user.balance}
+            else:
+                raise HTTPException(status_code=500, detail="Error al actualizar el saldo")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error en recarga de saldo: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
+    
+    @staticmethod
+    def get_transaction_history(
+        current_user: UserModel = Depends(get_current_user),
+        limit: int = 10,
+        offset: int = 0
+    ):
+        """
+        Obtener historial de transacciones del usuario
+        """
+        try:
+            transactions = TransactionModel.find_by_user(
+                user_id=str(current_user._id),
+                limit=limit,
+                offset=offset
             )
+            
+            # Convertir a diccionarios para la respuesta
+            transaction_list = [transaction.to_dict() for transaction in transactions]
+            
+            return {
+                "transactions": transaction_list,
+                "total_shown": len(transaction_list),
+                "limit": limit,
+                "offset": offset
+            }
             
         except Exception as e:
-            logging.exception("Error al obtener saldo:")
-            return ServerResponse.error(
-                "Error al obtener el saldo",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Error al obtener historial de transacciones: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error al obtener historial de transacciones")

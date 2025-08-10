@@ -1,42 +1,47 @@
-from flask_restful import Resource, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from fastapi import HTTPException, Depends
 from models.user.model import UserModel
-from utils.server_response import ServerResponse
-from utils.message_codes import *
-from middleware.auth import auth_required
+from models.auth.schemas import UserProfile, ChangePasswordRequest
+from middleware.auth import get_current_user
+from services.auth_service import AuthService
+from decouple import config
 import qrcode
-import io
 import base64
-import json
+from io import BytesIO
 import logging
 
-class UserQRController(Resource):
-    @auth_required()
-    def get(self, current_user=None):
+logger = logging.getLogger(__name__)
+
+# Configuración para AuthService
+SECRET_KEY = config('SECRET_KEY', default='dev-secret-key')
+ALGORITHM = "HS256"
+auth_service = AuthService(SECRET_KEY, ALGORITHM)
+
+class UserController:
+    @staticmethod
+    def get_profile(current_user: UserModel = Depends(get_current_user)):
         """
-        Genera un código QR con la información del usuario para pagos
+        Obtener perfil del usuario actual
         """
         try:
-            # Obtener información del usuario
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
-            
-            # Crear datos para el QR (solo información necesaria)
-            qr_data = {
-                'user_id': str(user._id),
-                'name': user.name,
-                'email': user.email,
-                'balance': user.balance,
-                'timestamp': datetime.utcnow().isoformat()
+            return {
+                "id": str(current_user._id),
+                "name": current_user.name,
+                "email": current_user.email,
+                "balance": current_user.balance,
+                "payment_methods": current_user.payment_methods or []
             }
-            
-            # Convertir a JSON
-            qr_json = json.dumps(qr_data)
+        except Exception as e:
+            logger.error(f"Error al obtener perfil: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")
+    
+    @staticmethod
+    def generate_qr(current_user: UserModel = Depends(get_current_user)):
+        """
+        Generar código QR del usuario para pagos
+        """
+        try:
+            # Crear datos para el QR
+            qr_data = str(current_user._id)
             
             # Generar código QR
             qr = qrcode.QRCode(
@@ -45,81 +50,56 @@ class UserQRController(Resource):
                 box_size=10,
                 border=4,
             )
-            qr.add_data(qr_json)
+            qr.add_data(qr_data)
             qr.make(fit=True)
             
             # Crear imagen del QR
             img = qr.make_image(fill_color="black", back_color="white")
             
             # Convertir a base64
-            buffered = io.BytesIO()
-            img.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            buffer = BytesIO()
+            img.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
             
-            return ServerResponse.success(
-                data={
-                    'qr_code': img_str,
-                    'expires_in': 300  # Tiempo de expiración en segundos (5 minutos)
-                },
-                message_code=QR_GENERATED
-            )
+            return {
+                "qr_code": f"data:image/png;base64,{img_str}",
+                "qr_data": qr_data,
+                "user_id": str(current_user._id),
+                "user_name": current_user.name
+            }
             
         except Exception as e:
-            logging.exception("Error al generar código QR:")
-            return ServerResponse.error(
-                "Error al generar el código QR",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Error al generar QR: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error al generar código QR")
     
-    @auth_required()
-    def get_user_profile(self, current_user=None):
+    @staticmethod
+    def change_password(password_data: ChangePasswordRequest, current_user: UserModel = Depends(get_current_user)):
         """
-        Obtiene el perfil del usuario actual
+        Cambiar contraseña del usuario
         """
         try:
-            user = UserModel.find_by_id(current_user['_id'])
-            if not user:
-                return ServerResponse.error(
-                    "Usuario no encontrado",
-                    status=404,
-                    message_code=USER_NOT_FOUND
-                )
+            # Verificar contraseña actual
+            if not auth_service.verify_password(password_data.current_password, current_user.password):
+                raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
             
-            # Obtener métodos de pago (sin información sensible)
-            payment_methods = []
-            for method in user.payment_methods:
-                payment_methods.append({
-                    'id': method.get('id'),
-                    'card_brand': method.get('card_brand'),
-                    'last4': method.get('card_number_last4'),
-                    'expiry': method.get('expiry'),
-                    'is_default': method.get('is_default', False),
-                    'created_at': method.get('created_at')
-                })
+            # Validar nueva contraseña (mínimo 8 caracteres)
+            if len(password_data.new_password) < 8:
+                raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 8 caracteres")
             
-            # Obtener historial de transacciones recientes
-            recent_transactions = []
-            # Aquí iría la lógica para obtener las transacciones recientes
+            # Hash de la nueva contraseña
+            new_password_hash = auth_service.get_password_hash(password_data.new_password)
             
-            return ServerResponse.success(
-                data={
-                    'user': {
-                        'id': str(user._id),
-                        'name': user.name,
-                        'email': user.email,
-                        'balance': user.balance,
-                        'created_at': user.created_at.isoformat() if hasattr(user.created_at, 'isoformat') else user.created_at,
-                        'payment_methods': payment_methods,
-                        'recent_transactions': recent_transactions
-                    }
+            # Actualizar contraseña usando el método del modelo
+            if current_user.update_password(new_password_hash):
+                return {
+                    "message": "Contraseña actualizada exitosamente",
+                    "updated_at": current_user.updated_at.isoformat()
                 }
-            )
-            
+            else:
+                raise HTTPException(status_code=500, detail="Error al actualizar la contraseña")
+                
+        except HTTPException:
+            raise
         except Exception as e:
-            logging.exception("Error al obtener perfil de usuario:")
-            return ServerResponse.error(
-                "Error al obtener el perfil de usuario",
-                status=500,
-                message_code=INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Error al cambiar contraseña: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error interno del servidor")

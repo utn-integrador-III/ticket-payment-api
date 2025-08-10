@@ -76,3 +76,139 @@ class UserModel:
         except Exception as e:
             logging.exception("Error al eliminar método de pago:")
             return False
+
+    def update_password(self, new_password_hash):
+        """
+        Actualiza la contraseña del usuario
+        """
+        try:
+            result = db.users.update_one(
+                {'_id': self._id},
+                {'$set': {'password': new_password_hash, 'updated_at': datetime.utcnow()}}
+            )
+            if result.modified_count > 0:
+                self.password = new_password_hash
+                self.updated_at = datetime.utcnow()
+                return True
+            return False
+        except Exception as e:
+            logging.exception("Error al actualizar contraseña:")
+            return False
+
+    def update_balance(self, new_balance):
+        """
+        Actualiza el balance del usuario
+        """
+        try:
+            result = db.users.update_one(
+                {'_id': self._id},
+                {'$set': {'balance': new_balance, 'updated_at': datetime.utcnow()}}
+            )
+            if result.modified_count > 0:
+                self.balance = new_balance
+                self.updated_at = datetime.utcnow()
+                return True
+            return False
+        except Exception as e:
+            logging.exception("Error al actualizar balance:")
+            return False
+
+    def add_payment_method(self, payment_method):
+        """
+        Agrega un método de pago al usuario.
+        Si existe un método vacío (sin datos), lo reemplaza.
+        Si no hay métodos vacíos, agrega uno nuevo.
+        """
+        try:
+            # Verificar si hay métodos de pago vacíos para reemplazar
+            empty_method_index = None
+            for i, method in enumerate(self.payment_methods):
+                # Verificar si el método está vacío (sin card_number o con card_number vacío)
+                if not method.get('card_number', '').strip():
+                    empty_method_index = i
+                    break
+            
+            if empty_method_index is not None:
+                # Reemplazar el método vacío
+                old_method = self.payment_methods[empty_method_index]
+                self.payment_methods[empty_method_index] = payment_method
+            else:
+                # No hay métodos vacíos, agregar uno nuevo
+                self.payment_methods.append(payment_method)
+            
+            # Actualizar en la base de datos
+            result = db.users.update_one(
+                {'_id': self._id},
+                {'$set': {'payment_methods': self.payment_methods, 'updated_at': datetime.utcnow()}}
+            )
+            
+            if result.modified_count > 0:
+                self.updated_at = datetime.utcnow()
+                return True
+            else:
+                # Revertir cambio local si falló la actualización
+                if empty_method_index is not None:
+                    self.payment_methods[empty_method_index] = old_method
+                else:
+                    self.payment_methods.pop()
+                return False
+                
+        except Exception as e:
+            logging.exception("Error al agregar método de pago:")
+            # Revertir cambio local si falló
+            if empty_method_index is not None:
+                self.payment_methods[empty_method_index] = old_method
+            elif payment_method in self.payment_methods:
+                self.payment_methods.remove(payment_method)
+            return False
+
+    def remove_payment_method_by_card_holder(self, card_holder):
+        """
+        Elimina un método de pago por card_holder
+        """
+        try:
+            original_count = len(self.payment_methods)
+            updated_methods = [m for m in self.payment_methods if m.get('card_holder') != card_holder]
+            
+            if len(updated_methods) == original_count:
+                # No se encontró el método de pago
+                return False
+            
+            result = db.users.update_one(
+                {'_id': self._id},
+                {'$set': {'payment_methods': updated_methods, 'updated_at': datetime.utcnow()}}
+            )
+            
+            if result.modified_count > 0:
+                self.payment_methods = updated_methods
+                self.updated_at = datetime.utcnow()
+                return True
+            return False
+        except Exception as e:
+            logging.exception(f"Error al eliminar método de pago por card_holder {card_holder}:")
+            return False
+
+    def clean_empty_payment_methods(self):
+        """
+        Limpia métodos de pago vacíos del usuario
+        """
+        try:
+            # Filtrar métodos que no estén vacíos
+            valid_methods = []
+            for method in self.payment_methods:
+                if method.get('card_number', '').strip():
+                    valid_methods.append(method)
+            
+            if len(valid_methods) != len(self.payment_methods):
+                self.payment_methods = valid_methods
+                result = db.users.update_one(
+                    {'_id': self._id},
+                    {'$set': {'payment_methods': self.payment_methods, 'updated_at': datetime.utcnow()}}
+                )
+                if result.modified_count > 0:
+                    self.updated_at = datetime.utcnow()
+                    return True
+            return True
+        except Exception as e:
+            logging.exception("Error al limpiar métodos de pago vacíos:")
+            return False
