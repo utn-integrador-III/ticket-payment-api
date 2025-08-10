@@ -47,10 +47,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 auth_service = AuthService(SECRET_KEY, ALGORITHM)
 
 # Rutas de la API
-@app.post("/api/register")
-async def register(user: RegisterRequest):
-    return AuthController.register(user)
-
 @app.get("/")
 async def read_root():
     return {"message": "Bienvenido a la API de pagos con QR"}
@@ -68,6 +64,11 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 # ---------------------------
 # Endpoint de Login
 # ---------------------------
+
+@app.post("/api/register")
+async def register(user: RegisterRequest):
+    return AuthController.register(user)
+
 @app.post("/api/login")
 async def login(user: LoginRequest):
     return AuthController.login(user)
@@ -105,9 +106,9 @@ async def list_payment_methods(current_user: UserModel = Depends(get_current_use
 async def add_payment_method(method: PaymentMethodIn, current_user: UserModel = Depends(get_current_user)):
     return PaymentMethodController.add_payment_method(method, current_user)
 
-@app.delete("/api/payment/methods/{method_id}")
-async def delete_payment_method(method_id: str, current_user: UserModel = Depends(get_current_user)):
-    return PaymentMethodController.delete_payment_method(method_id, current_user)
+@app.delete("/api/payment/methods/{card_holder}")
+async def delete_payment_method(card_holder: str, current_user: UserModel = Depends(get_current_user)):
+    return PaymentMethodController.delete_payment_method(card_holder, current_user)
 
 # ---------------------------
 # Endpoints de billetera

@@ -116,33 +116,23 @@ class PaymentMethodController:
             raise HTTPException(status_code=500, detail="Error interno del servidor")
     
     @staticmethod
-    def delete_payment_method(method_id: str, current_user: UserModel = Depends(get_current_user)):
+    def delete_payment_method(card_holder: str, current_user: UserModel = Depends(get_current_user)):
         """
-        Eliminar método de pago
+        Eliminar método de pago por card_holder
         """
         try:
-            # Buscar el método de pago
-            method_found = False
-            updated_methods = []
+            logger.info(f"Intentando eliminar método de pago para: {card_holder}")
             
-            for method in current_user.payment_methods:
-                if method.get('id') == method_id:
-                    method_found = True
-                else:
-                    updated_methods.append(method)
-            
-            if not method_found:
-                raise HTTPException(status_code=404, detail="Método de pago no encontrado")
-            
-            # Actualizar métodos de pago
-            current_user.payment_methods = updated_methods
-            if current_user.save():
-                return {"message": "Método de pago eliminado"}
+            # Usar el método del UserModel para eliminar por card_holder
+            if current_user.remove_payment_method_by_card_holder(card_holder):
+                logger.info(f"Método de pago eliminado exitosamente para: {card_holder}")
+                return {"message": f"Método de pago de {card_holder} eliminado correctamente"}
             else:
-                raise HTTPException(status_code=500, detail="Error al eliminar método de pago")
+                logger.warning(f"Método de pago no encontrado para card_holder: {card_holder}")
+                raise HTTPException(status_code=404, detail=f"Método de pago no encontrado para {card_holder}")
                 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error al eliminar método de pago: {str(e)}")
+            logger.error(f"Error al eliminar método de pago para {card_holder}: {str(e)}")
             raise HTTPException(status_code=500, detail="Error interno del servidor")

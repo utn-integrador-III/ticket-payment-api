@@ -162,6 +162,32 @@ class UserModel:
                 self.payment_methods.remove(payment_method)
             return False
 
+    def remove_payment_method_by_card_holder(self, card_holder):
+        """
+        Elimina un método de pago por card_holder
+        """
+        try:
+            original_count = len(self.payment_methods)
+            updated_methods = [m for m in self.payment_methods if m.get('card_holder') != card_holder]
+            
+            if len(updated_methods) == original_count:
+                # No se encontró el método de pago
+                return False
+            
+            result = db.users.update_one(
+                {'_id': self._id},
+                {'$set': {'payment_methods': updated_methods, 'updated_at': datetime.utcnow()}}
+            )
+            
+            if result.modified_count > 0:
+                self.payment_methods = updated_methods
+                self.updated_at = datetime.utcnow()
+                return True
+            return False
+        except Exception as e:
+            logging.exception(f"Error al eliminar método de pago por card_holder {card_holder}:")
+            return False
+
     def clean_empty_payment_methods(self):
         """
         Limpia métodos de pago vacíos del usuario
