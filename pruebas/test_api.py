@@ -120,11 +120,12 @@ def main():
     register_response = test_endpoint("POST", "/api/register", data=TEST_USER, expected_status=200)
     
     if register_response and register_response.status_code == 200:
-        register_data = register_response.json()
+        register_data = register_response.json().get("data", {})
         access_token = register_data.get("access_token")
         user_id = register_data.get("user", {}).get("id")
         print_success(f"Usuario registrado con ID: {user_id}")
-        print_info(f"Token obtenido: {access_token[:20]}...")
+        if access_token:
+            print_info(f"Token obtenido: {access_token[:20]}...")
     
     # Test 2: Login de usuario
     print_test("Login de Usuario", "POST", "/api/login")
@@ -176,33 +177,33 @@ def main():
     
     # Test 6: Obtener métodos de pago
     print_test("Obtener Métodos de Pago", "GET", "/api/payment-methods")
-    methods_response = test_endpoint("GET", "/api/payment-methods", headers=auth_headers, expected_status=200)
+    methods_response = test_endpoint("GET", "/api/payment/methods", headers=auth_headers, expected_status=200)
     
     if methods_response and methods_response.status_code == 200:
-        methods_data = methods_response.json()
+        methods_data = methods_response.json().get("data", {})
         if methods_data.get("payment_methods"):
             payment_method_id = methods_data["payment_methods"][0].get("id")
             print_info(f"Método de pago encontrado: {payment_method_id}")
     
     # Test 7: Agregar nuevo método de pago
-    print_test("Agregar Método de Pago", "POST", "/api/payment-methods")
+    print_test("Agregar Método de Pago", "POST", "/api/payment/methods")
     new_payment_method = {
         "card_holder": "Nuevo Titular",
         "card_number": "5555555555554444",
         "expiry": "06/26",
         "cvv": "456"
     }
-    add_method_response = test_endpoint("POST", "/api/payment-methods", data=new_payment_method, headers=auth_headers, expected_status=200)
+    add_method_response = test_endpoint("POST", "/api/payment/methods", data=new_payment_method, headers=auth_headers, expected_status=200)
     
     if add_method_response and add_method_response.status_code == 200:
-        new_method_data = add_method_response.json()
+        new_method_data = add_method_response.json().get("data", {})
         new_payment_method_id = new_method_data.get("payment_method", {}).get("id")
         if new_payment_method_id:
             print_info(f"Nuevo método agregado: {new_payment_method_id}")
             
             # Test 8: Eliminar método de pago
-            print_test("Eliminar Método de Pago", "DELETE", f"/api/payment-methods/{new_payment_method_id}")
-            delete_response = test_endpoint("DELETE", f"/api/payment-methods/{new_payment_method_id}", headers=auth_headers, expected_status=200)
+            print_test("Eliminar Método de Pago", "DELETE", f"/api/payment/methods/{new_payment_method_id}")
+            delete_response = test_endpoint("DELETE", f"/api/payment/methods/{new_payment_method_id}", headers=auth_headers, expected_status=200)
     
     # ==========================================
     # 4. PRUEBAS DE WALLET
@@ -210,8 +211,8 @@ def main():
     print_header("💰 PRUEBAS DE WALLET")
     
     # Test 9: Obtener balance
-    print_test("Obtener Balance", "GET", "/api/wallet/balance")
-    balance_response = test_endpoint("GET", "/api/wallet/balance", headers=auth_headers, expected_status=200)
+    print_test("Obtener Balance", "GET", "/api/wallet")
+    balance_response = test_endpoint("GET", "/api/wallet", headers=auth_headers, expected_status=200)
     
     # Test 10: Recargar wallet
     if payment_method_id:
@@ -229,8 +230,8 @@ def main():
     transactions_response = test_endpoint("GET", "/api/wallet/transactions", headers=auth_headers, expected_status=200)
     
     # Test 12: Historial paginado
-    print_test("Historial Paginado", "GET", "/api/wallet/transactions?page=1&limit=5")
-    paginated_response = test_endpoint("GET", "/api/wallet/transactions?page=1&limit=5", headers=auth_headers, expected_status=200)
+    print_test("Historial Paginado", "GET", "/api/wallet/transactions?limit=5&offset=0")
+    paginated_response = test_endpoint("GET", "/api/wallet/transactions?limit=5&offset=0", headers=auth_headers, expected_status=200)
     
     # ==========================================
     # 5. PRUEBAS DE PAGOS
@@ -242,7 +243,7 @@ def main():
     
     # Primero necesitamos datos QR válidos del usuario
     if qr_response and qr_response.status_code == 200:
-        qr_data = qr_response.json().get("qr_data", "")
+        qr_data = qr_response.json().get("data", {}).get("qr_data", "")
         if qr_data:
             scan_data = {
                 "qr_data": qr_data,
@@ -283,15 +284,15 @@ def main():
     
     # Obtener estadísticas finales
     if access_token:
-        final_balance_response = test_endpoint("GET", "/api/wallet/balance", headers=auth_headers, expected_status=200)
+        final_balance_response = test_endpoint("GET", "/api/wallet", headers=auth_headers, expected_status=200)
         final_transactions_response = test_endpoint("GET", "/api/wallet/transactions", headers=auth_headers, expected_status=200)
         
         if final_balance_response and final_balance_response.status_code == 200:
-            balance_data = final_balance_response.json()
+            balance_data = final_balance_response.json().get("data", {})
             print_info(f"💰 Balance final: ${balance_data.get('balance', 0)}")
         
         if final_transactions_response and final_transactions_response.status_code == 200:
-            trans_data = final_transactions_response.json()
+            trans_data = final_transactions_response.json().get("data", {})
             transactions = trans_data.get('transactions', [])
             print_info(f"📋 Total de transacciones: {len(transactions)}")
             

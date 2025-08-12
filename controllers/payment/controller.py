@@ -1,4 +1,6 @@
-from fastapi import HTTPException, Depends
+from fastapi import Depends
+from utils.server_response import ServerResponse
+from utils.message_codes import INSUFFICIENT_BALANCE, PAYMENT_SUCCESSFUL, PAYMENT_METHOD_NOT_FOUND, PAYMENT_METHOD_ADDED
 from models.user.model import UserModel
 from models.transaction.model import TransactionModel, TransactionType, TransactionStatus
 from models.auth.schemas import PaymentMethod, PaymentMethodIn, ScanRequest
@@ -30,7 +32,7 @@ class PaymentController:
             except Exception as e:
                 logger.warning(f"Error al registrar transacción rechazada: {str(e)}")
             
-            raise HTTPException(status_code=400, detail="Saldo insuficiente")
+            return ServerResponse.insufficient_balance(required_amount=scan_data.amount, current_balance=current_user.balance)
         
         # Crear transacción y procesar pago
         transaction = None
@@ -49,11 +51,15 @@ class PaymentController:
             if current_user.update_balance(new_balance):
                 # 3. Marcar como completada (aprobada)
                 transaction.update_status(TransactionStatus.COMPLETED)
-                return {"message": "Pago realizado", "balance": current_user.balance}
+                return ServerResponse.success(
+                    data={"balance": current_user.balance},
+                    message="Pago realizado",
+                    message_code=PAYMENT_SUCCESSFUL
+                )
             else:
                 # 4. Error al actualizar balance - marcar como fallida
                 transaction.update_status(TransactionStatus.FAILED)
-                raise HTTPException(status_code=500, detail="Error al procesar el pago")
+                return ServerResponse.server_error(message="Error al procesar el pago")
                 
         except HTTPException:
             # Re-lanzar HTTPException
@@ -72,10 +78,13 @@ class PaymentMethodController:
         Obtener métodos de pago del usuario
         """
         try:
-            return {
-                "payment_methods": current_user.payment_methods,
-                "count": len(current_user.payment_methods)
-            }
+            return ServerResponse.success(
+                data={
+                    "payment_methods": current_user.payment_methods,
+                    "count": len(current_user.payment_methods)
+                },
+                message="Métodos de pago obtenidos"
+            )
         except Exception as e:
             logger.error(f"Error al obtener métodos de pago: {str(e)}")
             raise HTTPException(status_code=500, detail="Error interno del servidor")
@@ -102,12 +111,13 @@ class PaymentMethodController:
             
             # Agregar método de pago
             if current_user.add_payment_method(new_method.dict()):
-                return {
-                    "message": "Método de pago agregado",
-                    "payment_method": new_method.dict()
-                }
+                return ServerResponse.success(
+                    data={"payment_method": new_method.dict()},
+                    message="Método de pago agregado",
+                    message_code=PAYMENT_METHOD_ADDED
+                )
             else:
-                raise HTTPException(status_code=500, detail="Error al agregar método de pago")
+                return ServerResponse.server_error(message="Error al agregar método de pago")
                 
         except HTTPException:
             raise
@@ -126,10 +136,12 @@ class PaymentMethodController:
             # Usar el método del UserModel para eliminar por card_holder
             if current_user.remove_payment_method_by_card_holder(card_holder):
                 logger.info(f"Método de pago eliminado exitosamente para: {card_holder}")
-                return {"message": f"Método de pago de {card_holder} eliminado correctamente"}
+                return ServerResponse.success(
+                    message=f"Método de pago de {card_holder} eliminado correctamente"
+                )
             else:
                 logger.warning(f"Método de pago no encontrado para card_holder: {card_holder}")
-                raise HTTPException(status_code=404, detail=f"Método de pago no encontrado para {card_holder}")
+                return ServerResponse.payment_method_not_found()
                 
         except HTTPException:
             raise

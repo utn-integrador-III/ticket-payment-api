@@ -190,22 +190,6 @@ Authorization: Bearer <token>
 
 La API utiliza **JWT (JSON Web Tokens)** para la autenticación. Después del login o registro, incluye el token en el header:
 
-```
-Authorization: Bearer <tu_token_aqui>
-```
-
-### Ejemplo con cURL:
-```bash
-curl -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." \
-     http://localhost:8000/api/user/profile
-```
-
-### Ejemplo con PowerShell:
-```powershell
-$headers = @{ "Authorization" = "Bearer tu_token_aqui" }
-Invoke-RestMethod -Uri "http://localhost:8000/api/user/profile" -Headers $headers
-```
-
 ## 🧪 Pruebas
 
 ### Ejecutar suite de pruebas completa:
@@ -213,50 +197,43 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/user/profile" -Headers $header
 python pruebas/test_api.py
 ```
 
-### Pruebas individuales con cURL:
-```bash
-# Registrar usuario
-curl -X POST "http://localhost:8000/api/register" \
-     -H "Content-Type: application/json" \
-     -d '{"name":"Test User","email":"test@example.com","password":"TestPassword123"}'
-
-# Obtener perfil (requiere token)
-curl -H "Authorization: Bearer <token>" \
-     "http://localhost:8000/api/user/profile"
-```
-
-### Pruebas con PowerShell:
-```powershell
-# Registrar usuario
-$body = @{
-    name = "Test User"
-    email = "test@example.com"
-    password = "TestPassword123"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/api/register" -Method POST -Body $body -ContentType "application/json"
-```
-
 ## 🏗️ Arquitectura
 
 ### Estructura del Proyecto
 ```
 ticket-payment-api/
-├── controllers/          # Controladores FastAPI
-│   ├── auth/            # Autenticación
-│   ├── user/            # Usuario
-│   ├── payment/         # Pagos
-│   └── wallet/          # Wallet
-├── models/              # Modelos de datos
-│   ├── user/            # Modelo de usuario
-│   ├── transaction/     # Modelo de transacciones
-│   └── auth/            # Esquemas de autenticación
-├── services/            # Lógica de negocio
-├── middleware/          # Middleware de autenticación
-├── db/                  # Configuración de base de datos
-├── pruebas/             # Scripts de prueba
-├── main.py              # Punto de entrada FastAPI
-└── requirements.txt     # Dependencias
+├── controllers/                    # 🎮 Controladores FastAPI
+│   ├── auth/
+│   │   └── controller.py          # Registro, login y OAuth2
+│   ├── user/
+│   │   └── controller.py          # Perfil, QR, cambio de contraseña
+│   ├── payment/
+│   │   └── controller.py          # Pagos QR y métodos de pago
+│   └── wallet/
+│       └── controller.py          # Balance, recarga y transacciones
+├── models/                         # 📊 Modelos de datos y esquemas
+│   ├── auth/
+│   │   └── schemas.py             # Pydantic schemas (Login, Register, Token, etc.)
+│   ├── user/
+│   │   └── model.py               # Modelo de usuario (MongoDB)
+│   └── transaction/
+│       └── model.py               # Modelo de transacciones (MongoDB)
+├── services/                       # 🔧 Lógica de negocio
+│   └── auth_service.py            # Autenticación JWT, hash passwords
+├── middleware/                     # 🛡️ Middleware de autenticación
+│   └── auth.py                    # Validación de tokens JWT
+├── utils/                          # 🛠️ Utilidades del sistema
+│   ├── message_codes.py           # Códigos de mensaje estandarizados
+│   └── server_response.py         # Respuestas HTTP estandarizadas
+├── db/                            # 🗄️ Configuración de base de datos
+│   └── mongodb.py                 # Conexión y configuración MongoDB
+├── pruebas/                       # 🧪 Scripts de prueba
+│   └── test_api.py                # Suite completa de tests de API
+├── main.py                        # 🚀 Punto de entrada FastAPI
+├── service_routes.py              # 📋 Definición de rutas (legacy)
+├── requirements.txt               # 📦 Dependencias Python
+├── Dockerfile                     # 🐳 Configuración Docker
+└── docker-compose.yml             # 🐳 Orquestación de servicios
 ```
 
 ### Controladores Modulares
