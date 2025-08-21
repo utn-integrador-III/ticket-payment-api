@@ -1,4 +1,6 @@
-from fastapi import HTTPException, Depends
+from fastapi import Depends
+from utils.server_response import ServerResponse
+from utils.message_codes import TOPUP_SUCCESSFUL
 from models.user.model import UserModel
 from models.transaction.model import TransactionModel, TransactionType, TransactionStatus
 from models.auth.schemas import TopupRequest
@@ -14,7 +16,10 @@ class WalletController:
         Obtener balance de la billetera
         """
         try:
-            return {"balance": current_user.balance}
+            return ServerResponse.success(
+                data={"balance": current_user.balance},
+                message="Balance obtenido exitosamente"
+            )
         except Exception as e:
             logger.error(f"Error al obtener balance: {str(e)}")
             raise HTTPException(status_code=500, detail="Error interno del servidor")
@@ -43,9 +48,13 @@ class WalletController:
                     # Log error but don't fail the operation
                     logger.warning(f"Error al registrar transacción: {str(e)}")
                 
-                return {"message": "Saldo recargado", "balance": current_user.balance}
+                return ServerResponse.success(
+                    data={"balance": current_user.balance},
+                    message="Saldo recargado exitosamente",
+                    message_code=TOPUP_SUCCESSFUL
+                )
             else:
-                raise HTTPException(status_code=500, detail="Error al actualizar el saldo")
+                return ServerResponse.server_error(message="Error al actualizar el saldo")
                 
         except HTTPException:
             raise
@@ -72,13 +81,16 @@ class WalletController:
             # Convertir a diccionarios para la respuesta
             transaction_list = [transaction.to_dict() for transaction in transactions]
             
-            return {
-                "transactions": transaction_list,
-                "total_shown": len(transaction_list),
-                "limit": limit,
-                "offset": offset
-            }
+            return ServerResponse.success(
+                data={
+                    "transactions": transaction_list,
+                    "total_shown": len(transaction_list),
+                    "limit": limit,
+                    "offset": offset
+                },
+                message="Historial de transacciones obtenido"
+            )
             
         except Exception as e:
             logger.error(f"Error al obtener historial de transacciones: {str(e)}")
-            raise HTTPException(status_code=500, detail="Error al obtener historial de transacciones")
+            return ServerResponse.server_error(message="Error al obtener historial de transacciones")

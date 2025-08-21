@@ -1,4 +1,6 @@
-from fastapi import HTTPException, Depends
+from fastapi import Depends
+from utils.server_response import ServerResponse
+from utils.message_codes import USER_ALREADY_EXISTS, USER_REGISTERED, LOGIN_SUCCESSFUL, INVALID_CREDENTIALS
 from fastapi.security import OAuth2PasswordRequestForm
 from models.user.model import UserModel
 from models.auth.schemas import LoginRequest, RegisterRequest, Token
@@ -24,7 +26,7 @@ class AuthController:
         try:
             # Verificar si el usuario ya existe
             if UserModel.find_by_email(user_data.email):
-                raise HTTPException(status_code=400, detail="El usuario ya existe")
+                return ServerResponse.user_already_exists()
             
             # Registrar usuario usando AuthService
             user = auth_service.register_user(user_data)
@@ -37,21 +39,24 @@ class AuthController:
                 expires_delta=access_token_expires
             )
             
-            return {
-                "message": "Usuario registrado exitosamente",
-                "access_token": token,
-                "token_type": "bearer",
-                "user": {
-                    "id": str(user._id),
-                    "name": user.name,
-                    "email": user.email,
-                    "balance": user.balance
-                }
-            }
+            return ServerResponse.success(
+                data={
+                    "access_token": token,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": str(user._id),
+                        "name": user.name,
+                        "email": user.email,
+                        "balance": user.balance
+                    }
+                },
+                message="Usuario registrado exitosamente",
+                message_code=USER_REGISTERED
+            )
             
         except Exception as e:
             logger.error(f"Error en registro: {str(e)}")
-            raise HTTPException(status_code=500, detail="Error interno del servidor")
+            return ServerResponse.server_error()
     
     @staticmethod
     def login(user_data: LoginRequest):
@@ -61,7 +66,8 @@ class AuthController:
         try:
             # Autenticar usuario
             user = auth_service.authenticate_user(LoginRequest(email=user_data.email, password=user_data.password))
-            
+            if not user:
+                return ServerResponse.unauthorized(message="Credenciales inválidas", message_code=INVALID_CREDENTIALS)
             # Crear token de acceso
             from datetime import timedelta
             access_token_expires = timedelta(minutes=30)
@@ -69,26 +75,24 @@ class AuthController:
                 data={"sub": user.email}, 
                 expires_delta=access_token_expires
             )
+            return ServerResponse.success(
+                data={
+                    "access_token": token,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": str(user._id),
+                        "name": user.name,
+                        "email": user.email,
+                        "balance": user.balance
+                    }
+                },
+                message="Inicio de sesión exitoso",
+                message_code=LOGIN_SUCCESSFUL
+            )
             
-            if not user:
-                raise HTTPException(status_code=401, detail="Credenciales inválidas")
-            
-            return {
-                "access_token": token,
-                "token_type": "bearer",
-                "user": {
-                    "id": str(user._id),
-                    "name": user.name,
-                    "email": user.email,
-                    "balance": user.balance
-                }
-            }
-            
-        except HTTPException:
-            raise
         except Exception as e:
             logger.error(f"Error en login: {str(e)}")
-            raise HTTPException(status_code=500, detail="Error interno del servidor")
+            return ServerResponse.server_error()
     
     @staticmethod
     def oauth2_login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -98,7 +102,8 @@ class AuthController:
         try:
             # Autenticar usuario
             user = auth_service.authenticate_user(LoginRequest(email=form_data.username, password=form_data.password))
-            
+            if not user:
+                return ServerResponse.unauthorized(message="Credenciales inválidas", message_code=INVALID_CREDENTIALS)
             # Crear token de acceso
             from datetime import timedelta
             access_token_expires = timedelta(minutes=30)
@@ -106,17 +111,15 @@ class AuthController:
                 data={"sub": user.email}, 
                 expires_delta=access_token_expires
             )
+            return ServerResponse.success(
+                data={
+                    "access_token": token,
+                    "token_type": "bearer"
+                },
+                message="Inicio de sesión exitoso",
+                message_code=LOGIN_SUCCESSFUL
+            )
             
-            if not user:
-                raise HTTPException(status_code=401, detail="Credenciales inválidas")
-            
-            return {
-                "access_token": token,
-                "token_type": "bearer"
-            }
-            
-        except HTTPException:
-            raise
         except Exception as e:
             logger.error(f"Error en OAuth2 login: {str(e)}")
-            raise HTTPException(status_code=500, detail="Error interno del servidor")
+            return ServerResponse.server_error()
