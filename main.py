@@ -7,13 +7,20 @@ import logging
 from models.user.model import UserModel
 from models.auth.schemas import (
     LoginRequest, RegisterRequest, Token, UserProfile,
-    PaymentMethodIn, TopupRequest, ScanRequest, ChangePasswordRequest
+    PaymentMethodIn, TopupRequest, ScanRequest, ChangePasswordRequest,
+    DriverLoginRequest, DriverRegisterRequest, DriverProfile,
+    RouteCreateRequest, RouteUpdateRequest, RouteAssignmentRequest,
+    DriverScanRequest
 )
 from services.auth_service import AuthService
 from controllers.auth.controller import AuthController
 from controllers.user.controller import UserController
 from controllers.payment.controller import PaymentController, PaymentMethodController
 from controllers.wallet.controller import WalletController
+from controllers.driver.controller import DriverController
+from controllers.driver.payment_controller import DriverPaymentController
+from controllers.route.controller import RouteController
+from middleware.auth import get_current_driver
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +49,7 @@ app.add_middleware(
 
 # Configuración de seguridad
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+driver_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="driver/token")
 
 # Inicializar servicio de autenticación
 auth_service = AuthService(SECRET_KEY, ALGORITHM)
@@ -54,6 +62,10 @@ async def read_root():
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     return AuthController.oauth2_login(form_data)
+
+@app.post("/driver/token", response_model=Token)
+async def driver_login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    return DriverController.oauth2_login(form_data)
 
 # Incluir routers de otros módulos
 # from routers import users, payments, wallet
@@ -135,6 +147,86 @@ async def wallet_topup(topup: TopupRequest, current_user: UserModel = Depends(ge
 @app.post("/api/payment/scan")
 async def payment_scan(scan: ScanRequest, current_user: UserModel = Depends(get_current_user)):
     return PaymentController.scan_payment(scan, current_user)
+
+# ---------------------------
+# Endpoints de choferes
+# ---------------------------
+@app.post("/api/driver/register")
+async def driver_register(driver: DriverRegisterRequest):
+    return DriverController.register(driver)
+
+@app.post("/api/driver/login")
+async def driver_login(driver: DriverLoginRequest):
+    return DriverController.login(driver)
+
+@app.get("/api/driver/profile")
+async def get_driver_profile(current_driver = Depends(get_current_driver)):
+    return DriverController.get_profile(current_driver)
+
+@app.put("/api/driver/vehicle")
+async def update_vehicle_info(vehicle_info: dict, current_driver = Depends(get_current_driver)):
+    return DriverController.update_vehicle_info(vehicle_info, current_driver)
+
+# ---------------------------
+# Endpoints de rutas
+# ---------------------------
+@app.post("/api/routes")
+async def create_route(route: RouteCreateRequest):
+    return RouteController.create_route(route)
+
+@app.get("/api/routes")
+async def get_all_routes():
+    return RouteController.get_all_routes()
+
+@app.get("/api/routes/{route_id}")
+async def get_route(route_id: str):
+    return RouteController.get_route(route_id)
+
+@app.get("/api/routes/code/{route_code}")
+async def get_route_by_code(route_code: str):
+    return RouteController.get_route_by_code(route_code)
+
+@app.put("/api/routes/{route_id}")
+async def update_route(route_id: str, route: RouteUpdateRequest):
+    return RouteController.update_route(route_id, route)
+
+@app.delete("/api/routes/{route_id}")
+async def delete_route(route_id: str):
+    return RouteController.delete_route(route_id)
+
+@app.put("/api/routes/{route_id}/fare")
+async def update_route_fare(route_id: str, new_fare: float):
+    return RouteController.update_route_fare(route_id, new_fare)
+
+# ---------------------------
+# Endpoints de asignación de rutas
+# ---------------------------
+@app.post("/api/routes/assign")
+async def assign_driver_to_route(assignment: RouteAssignmentRequest):
+    return RouteController.assign_driver_to_route(assignment)
+
+@app.post("/api/routes/unassign")
+async def remove_driver_from_route(assignment: RouteAssignmentRequest):
+    return RouteController.remove_driver_from_route(assignment)
+
+@app.get("/api/driver/routes")
+async def get_driver_routes(current_driver = Depends(get_current_driver)):
+    return RouteController.get_driver_routes(current_driver)
+
+# ---------------------------
+# Endpoints de pagos por chofer
+# ---------------------------
+@app.post("/api/driver/payment/scan")
+async def driver_scan_payment(scan: DriverScanRequest, current_driver = Depends(get_current_driver)):
+    return DriverPaymentController.scan_payment_by_driver(scan, current_driver)
+
+@app.get("/api/driver/payment/history")
+async def get_driver_payment_history(current_driver = Depends(get_current_driver)):
+    return DriverPaymentController.get_payment_history(current_driver)
+
+@app.get("/api/driver/payment/daily-summary")
+async def get_driver_daily_summary(current_driver = Depends(get_current_driver)):
+    return DriverPaymentController.get_daily_summary(current_driver)
 
 if __name__ == "__main__":
     import uvicorn
