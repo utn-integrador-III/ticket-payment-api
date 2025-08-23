@@ -289,3 +289,111 @@ uvicorn main:app --reload --port 8001
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
+Endpoints de Choferes
+1. Registro de Chofer
+http
+POST /api/driver/register
+Body:
+
+json
+{
+  "name": "Carlos Rodríguez",
+  "email": "carlos@transportebus.com",
+  "password": "MiClave123",
+  "license_number": "LIC987654321"
+}
+Con teléfono (opcional):
+
+json
+{
+  "name": "Carlos Rodríguez", 
+  "email": "carlos@transportebus.com",
+  "password": "MiClave123",
+  "license_number": "LIC987654321",
+  "phone": "+50312345678"
+}
+Token: ❌ No requiere
+
+2. Login de Chofer
+http
+POST /api/driver/login
+Body:
+
+json
+{
+  "email": "juan.perez@transporte.com",
+  "password": "MiClaveSegura123"
+}
+Token: ❌ No requiere
+
+3. Escaneo QR con Cobro por Ruta
+http
+POST /api/driver/payment/scan
+Body:
+
+json
+{
+  "qr_data": "64f1a2b3c4d5e6f7g8h9i0j1",
+  "route_code": "R001"
+}
+Token: ✅ Bearer token de chofer requerido Headers:
+
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+4. Historial de Pagos Procesados
+http
+GET /api/driver/payment/history
+Body: Sin body (GET request) Token: ✅ Bearer token de chofer requerido
+
+5. Rutas Asignadas al Chofer
+http
+GET /api/driver/routes
+Body: Sin body (GET request) Token: ✅ Bearer token de chofer requerido
+
+🛣️ Endpoints de Rutas
+6. Crear Ruta
+http
+POST /api/routes
+Body:
+
+json
+{
+  "name": "Ruta Centro-Norte",
+  "code": "R001",
+  "description": "Ruta que conecta el centro con la zona norte",
+  "origin": "Plaza Central",
+  "destination": "Terminal Norte",
+  "stops": [
+    "Parada Hospital",
+    "Parada Universidad",
+    "Parada Mercado",
+    "Terminal Norte"
+  ],
+  "fare_amount": 2.50,
+  "distance_km": 15.5,
+  "estimated_duration": 45,
+  "schedule": {
+    "weekdays": {
+      "start": "05:00",
+      "end": "22:00",
+      "frequency": 15
+    },
+    "weekends": {
+      "start": "06:00",
+      "end": "21:00",
+      "frequency": 20
+    }
+  }
+}
+Token: ❌ No requiere (pero debería ser admin en producción)
+
+7. Asignar Chofer a Ruta
+http
+POST /api/routes/assign
+Body:
+
+json
+{
+  "driver_id": "64f1a2b3c4d5e6f7g8h9i0j1",
+  "route_id": "64f2b3c4d5e6f7g8h9i0j1k2"
+}
+Token: ❌ No requiere (pero debería ser admin en producción)
