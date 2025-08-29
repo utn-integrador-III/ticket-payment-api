@@ -1,0 +1,44 @@
+
+services:
+  # Servicio de la aplicación
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+      - MONGO_URI=mongodb://mongo:27017/
+      - MONGO_DB_NAME=ticket_payment_db
+      - JWT_SECRET_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTU5MDc4MzMsImlhdCI6MTc1NTkwNjAzMywic3ViIjoiNjg1ZTRjMDExYmYwN2I5OGU0ZThiYTA2Iiwicm9sTmFtZSI6Ikxvc3QtUHJvcGVydHkvTWVtYmVyIiwiZW1haWwiOiJhcm9kcmlndWV6bGFAZXN0LnV0bi5hYy5jciIsIm5hbWUiOiJBc2hseSBSb2RyaWd1ZXogTGFudXphIiwic3RhdHVzIjoiQWN0aXZlIn0.81Al9vRKpQ0U6GzMA8AGGEQPGWCrxDMZWxEyxP8QHjU
+    depends_on:
+      - mongo
+    volumes:
+      - .:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 5000 --reload
+
+  # Servicio de MongoDB
+  mongo:
+    image: mongo:5.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=ticket_payment_db
+
+  # MongoDB Express (Interfaz web opcional para MongoDB)
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+    depends_on:
+      - mongo
+
+volumes:
+  mongodb_data:
