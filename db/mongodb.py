@@ -22,7 +22,7 @@ class MongoDB:
         """Inicializa la conexión a MongoDB"""
         try:
             # Obtener configuración de variables de entorno
-            mongo_uri = config('MONGO_URI', default='mongodb+srv://utnuser:utnus3r24@cluster0.d9lhmxd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0') # mongodb+srv://utnuser:utnus3r24@cluster0.d9lhmxd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+            mongo_uri = config('MONGO_URI', default='mongodb://localhost:27017/') # mongodb+srv://utnuser:utnus3r24@cluster0.d9lhmxd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
             db_name = config('MONGO_DB_NAME', default='ticket_payment_db')
             
             # Conectar a MongoDB
